@@ -43,7 +43,7 @@ export async function runAtmosphereSpike(renderer: THREE.WebGPURenderer, date = 
   // SphereGeometry already puts u = 0.5 (longitude 0) on +x; rotate its +y poles onto ECEF +z.
   const geometry = new THREE.SphereGeometry(1, 360, 180)
   geometry.rotateX(Math.PI / 2)
-  const material = new THREE.MeshPhysicalNodeMaterial({ roughness: 0.75, ior: 1.33 })
+  const material = new THREE.MeshPhysicalNodeMaterial({ roughness: Number(new URLSearchParams(location.search).get('rough') ?? 0.75), ior: 1.33 })
   material.colorNode = texture(albedo).rgb
   material.emissiveNode = vec3(0)
   const globe = new THREE.Mesh(geometry, material)
