@@ -1,6 +1,8 @@
 // Minimal typings for three's bundled libs (not covered by @types/three).
 declare module 'three/addons/libs/ktx-parse.module.js' {
   export const VK_FORMAT_R16_SFLOAT: number
+  export const VK_FORMAT_R16G16_SFLOAT: number
+  export const VK_FORMAT_R16G16B16A16_SFLOAT: number
   export interface KTX2Level {
     levelData: Uint8Array
     uncompressedByteLength: number

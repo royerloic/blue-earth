@@ -74,3 +74,13 @@ test('Classic mode: waves, sea-level strip and right-click exit', async ({ page 
   await page.waitForURL((u) => !u.search.includes('mode=classic'))
   expect(errors).toEqual([])
 })
+
+import { existsSync } from 'node:fs'
+
+test('globe data tiers load (skipped until the pipeline has been run)', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'run: cd pipeline && uv run python -m blueearth_pipeline.build')
+  for (const tier of ['low', 'medium']) {
+    const { data } = await runSpike(page, `spike=data&tier=${tier}`)
+    expect(data.tier).toBe(tier)
+  }
+})
