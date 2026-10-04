@@ -60,6 +60,10 @@ export class RTTExecutor implements Executor {
     }
   }
 
+  texture(field: Field): THREE.Texture {
+    return (field as RTTField).target.texture
+  }
+
   async read(field: Field): Promise<Float32Array> {
     const f = field as RTTField
     const data = (await this.renderer.readRenderTargetPixelsAsync(f.target, 0, 0, f.width, f.height)) as Float32Array

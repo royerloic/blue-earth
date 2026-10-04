@@ -50,6 +50,10 @@ export class ComputeExecutor implements Executor {
     return () => this.renderer.compute(node)
   }
 
+  texture(field: Field): THREE.Texture {
+    return (field as ComputeField).texture
+  }
+
   async read(field: Field): Promise<Float32Array> {
     const f = field as ComputeField
     const backend = this.renderer.backend as unknown as {

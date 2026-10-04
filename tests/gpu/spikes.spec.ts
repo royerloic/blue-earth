@@ -53,3 +53,24 @@ test('hello globe renders a non-blank frame', async ({ page }) => {
   expect(shot.byteLength).toBeGreaterThan(50_000)
   expect(errors).toEqual([])
 })
+
+test('Classic mode: waves, sea-level strip and right-click exit', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await page.goto('/?mode=classic')
+  await page.waitForTimeout(5000) // the intro drains the sea over 256 frames
+  // 800×600 fitted into 1280×800 → scale 4/3, x offset 106.7.
+  const X = (x: number) => 106.7 + (x * 4) / 3
+  const Y = (y: number) => (y * 4) / 3
+  const before = await page.locator('canvas').screenshot()
+  await page.mouse.move(X(270), Y(290))
+  await page.mouse.down()
+  await page.waitForTimeout(400)
+  await page.mouse.up()
+  await page.waitForTimeout(800)
+  const after = await page.locator('canvas').screenshot()
+  expect(Buffer.compare(before, after)).not.toBe(0)
+  await page.mouse.click(X(400), Y(300), { button: 'right' })
+  await page.waitForURL((u) => !u.search.includes('mode=classic'))
+  expect(errors).toEqual([])
+})

@@ -24,6 +24,8 @@ export interface Executor {
   createStatic(width: number, height: number, data: Float32Array): Field
   /** Compiles `kernel`, reading `inputs`, writing `output`. Returns a runnable pass. */
   pass<I extends string>(kernel: Kernel<I>, inputs: Record<I, Field>, output: Field): () => void
+  /** The GPU texture holding a field, for sampling in display materials (use textureLoad). */
+  texture(field: Field): THREE.Texture
   read(field: Field): Promise<Float32Array>
 }
 
