@@ -10,7 +10,18 @@ export function gotoMode(mode: 'globe' | 'classic') {
   location.href = url.toString()
 }
 
+/** Space toggles fullscreen in every mode. */
+function installFullscreenToggle() {
+  addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.repeat || (e.target as HTMLElement).tagName === 'TEXTAREA') return
+    e.preventDefault()
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void document.documentElement.requestFullscreen().catch(() => {})
+  })
+}
+
 async function main() {
+  installFullscreenToggle()
   const info = await createRenderer()
   const mode = new URLSearchParams(location.search).get('mode')
   if (mode === 'classic') await startClassicMode(info, () => gotoMode('globe'))

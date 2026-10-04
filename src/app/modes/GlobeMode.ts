@@ -115,7 +115,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   sunText.textContent = 'real (date & time)'
   const posText = hud.text('Cursor')
   const schemeText = hud.text('Controls')
-  hud.note(`K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
+  hud.note(`Space: fullscreen · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
   applyScheme()
 
   addEventListener('resize', () => {
