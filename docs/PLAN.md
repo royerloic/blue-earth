@@ -25,6 +25,9 @@ The goal is a modern, ultra-realistic, web-based 3D version.
 - Explorer controls by default, with a Classic toggle.
 - Asset CDN: decide later. Build tiers behind `VITE_ASSET_BASE` and start Pages-only.
 
+## M0 outcome
+All spikes are a go; see [M0-SPIKES.md](M0-SPIKES.md). Changes: three pinned to **0.184.0** (takram compatibility), and static textures use **EAC 6-layer arrays with gutters** instead of cube maps.
+
 ## Stack (confirmed by research, Oct 2026)
 - **Core:** Vite + TypeScript + **three@0.184.0 pinned (takram 0.19.1 is built against 0.184; r186 breaks its TSL structs)**. Use `WebGPURenderer` with TSL (`three/webgpu`, `three/tsl`); it falls back to WebGL2 automatically.
 - **No React/R3F:** vanilla TypeScript plus a tiny signals store. Hand-made HTML/CSS for the on-screen controls and readouts, with Tweakpane 4 for the expert panel.
