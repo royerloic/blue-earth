@@ -59,3 +59,39 @@ def direction_to_face_st(d: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndar
     s = (np.arctan(a) * 4 / np.pi + 1) / 2
     t = (np.arctan(b) * 4 / np.pi + 1) / 2
     return face, s, t
+
+
+def face_neighbors(n: int) -> np.ndarray:
+    """4-neighbour table on the cube grid, shape (6·n·n, 4): [+s, −s, +t, −t] global cell ids
+    (id = face·n² + t_row·n + s_col). Across face edges the neighbour is found by stepping one
+    texel past the edge in EAC coordinates and mapping that direction back onto the cube."""
+    ids = np.arange(6 * n * n, dtype=np.int64).reshape(6, n, n)
+    out = np.empty((6, n, n, 4), dtype=np.int64)
+    for face in range(6):
+        jj, ii = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")  # jj: row (t), ii: col (s)
+        for k, (di, dj) in enumerate([(1, 0), (-1, 0), (0, 1), (0, -1)]):
+            ni, nj = ii + di, jj + dj
+            inside = (ni >= 0) & (ni < n) & (nj >= 0) & (nj < n)
+            res = np.where(inside, ids[face, np.clip(nj, 0, n - 1), np.clip(ni, 0, n - 1)], -1)
+            oi, oj = ni[~inside], nj[~inside]
+            if oi.size:
+                a = np.tan((2 * (oi + 0.5) / n - 1) * np.pi / 4)
+                b = np.tan((2 * (oj + 0.5) / n - 1) * np.pi / 4)
+                major, s_axis, t_axis = FACE_BASIS[face]
+                d = major + a[:, None] * s_axis + b[:, None] * t_axis
+                f2, s2, t2 = direction_to_face_st(d / np.linalg.norm(d, axis=1, keepdims=True))
+                i2 = np.clip((s2 * n).astype(np.int64), 0, n - 1)
+                j2 = np.clip((t2 * n).astype(np.int64), 0, n - 1)
+                res[~inside] = ids[f2, j2, i2]
+            out[face, :, :, k] = res
+    return out.reshape(-1, 4)
+
+
+def texel_solid_angles(n: int) -> np.ndarray:
+    """Solid angle (sr) of each texel of one face, shape (n, n); identical for all six faces."""
+    edges = np.tan((2 * np.arange(n + 1) / n - 1) * np.pi / 4)
+    # Exact solid angle of the gnomonic rectangle [x0,x1]×[y0,y1] at unit distance.
+    f = lambda x, y: np.arctan2(x * y, np.sqrt(1 + x * x + y * y))  # noqa: E731
+    x0, y0 = np.meshgrid(edges[:-1], edges[:-1])
+    x1, y1 = np.meshgrid(edges[1:], edges[1:])
+    return f(x1, y1) - f(x0, y1) - f(x1, y0) + f(x0, y0)

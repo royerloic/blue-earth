@@ -4,10 +4,13 @@ version = "0.1.0"
 description = "Data preparation for Blue Earth (DEM, imagery, cube faces, KTX2)"
 requires-python = ">=3.11"
 dependencies = [
+    "numba>=0.68.0",
     "numpy>=2",
- "openexr>=3.5.2",
- "pillow>=11",
- "scipy>=1.14",
+    "openexr>=3.5.2",
+    "pillow>=11",
+    "pyshp>=3.1.6",
+    "rasterio>=1.4.4",
+    "scipy>=1.14",
 ]
 
 [dependency-groups]

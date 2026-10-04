@@ -1,0 +1,52 @@
+{
+  "black_marble": {
+    "bytes": 8106233,
+    "sha256": "230aac448ae68c358be433dd518888cccb3a85ccf66f7b44326441c324ad6725",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/144000/144898/BlackMarble_2016_3km.jpg"
+  },
+  "bmng_01": {
+    "bytes": 1884678,
+    "sha256": "99f5faad74efe985fbf1714c8be7296ca9999759a1215b65f99b7f1df278dde5",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/january/world.200401.3x5400x2700.jpg"
+  },
+  "bmng_04": {
+    "bytes": 1774173,
+    "sha256": "8db8d5e545b31cde0e4e5dfa46cb116bf485243a0200c2d6e4b04b4e6937f669",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/april/world.200404.3x5400x2700.jpg"
+  },
+  "bmng_07": {
+    "bytes": 1617810,
+    "sha256": "f55226d46d27e05511f2118dc6aa24f5dbf9b6b2cddc87cc6e0e7dd067c00b11",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/july/world.200407.3x5400x2700.jpg"
+  },
+  "bmng_10": {
+    "bytes": 1766694,
+    "sha256": "ccfd9b7a5e5ee601e1466556716bba50ea418f3a8e068ab0194ae0425815b1b0",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/october/world.200410.3x5400x2700.jpg"
+  },
+  "clouds": {
+    "bytes": 829367,
+    "sha256": "daddaad84d7a33bbbc86cdda3f591099f57cee8607b7bcf3b67eb7e4f7a1c793",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/content-feature/bluemarble/images/cloud_combined_2048.jpg"
+  },
+  "etopo_bed": {
+    "bytes": 478386633,
+    "sha256": "a2cc72f8a4292dee928f439069457cdefc1fba319876807c626edce40258ba7a",
+    "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_bed_elev_gtif/ETOPO_2022_v1_60s_N90W180_bed.tif"
+  },
+  "etopo_surface": {
+    "bytes": 465969062,
+    "sha256": "9d27d4b8ea8e76977e2988bca667d7c8fa68b927355feffcddd6b4875a7fd08e",
+    "url": "https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/ETOPO_2022_v1_60s_N90W180_surface.tif"
+  },
+  "ne_lakes": {
+    "bytes": 2349685,
+    "sha256": "0803a06f9c3cb4671d89b68c48b142aad9366ba40f665245e12a913fbc61722a",
+    "url": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_lakes.zip"
+  },
+  "ne_land": {
+    "bytes": 3269070,
+    "sha256": "e547d749445eaa0964aba76738090ec88f5e63c4585122170f98c67a7ea922dc",
+    "url": "https://naciscdn.org/naturalearth/10m/physical/ne_10m_land.zip"
+  }
+}
