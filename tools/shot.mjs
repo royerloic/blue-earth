@@ -9,7 +9,7 @@ const browser = await chromium.launch({
 })
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 page.on('console', (m) => console.log(`[${m.type()}]`, m.text()))
-page.on('pageerror', (e) => console.log('[pageerror]', e.message))
+page.on('pageerror', (e) => console.log('[pageerror]', e.stack ?? e.message))
 await page.goto(url)
 await page.waitForTimeout(Number(wait))
 await page.screenshot({ path: out })

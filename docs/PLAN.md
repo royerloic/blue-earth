@@ -26,7 +26,7 @@ The goal is a modern, ultra-realistic, web-based 3D version.
 - Asset CDN: decide later. Build tiers behind `VITE_ASSET_BASE` and start Pages-only.
 
 ## Stack (confirmed by research, Oct 2026)
-- **Core:** Vite + TypeScript + **three@0.186.1 pinned**. Use `WebGPURenderer` with TSL (`three/webgpu`, `three/tsl`); it falls back to WebGL2 automatically.
+- **Core:** Vite + TypeScript + **three@0.184.0 pinned (takram 0.19.1 is built against 0.184; r186 breaks its TSL structs)**. Use `WebGPURenderer` with TSL (`three/webgpu`, `three/tsl`); it falls back to WebGL2 automatically.
 - **No React/R3F:** vanilla TypeScript plus a tiny signals store. Hand-made HTML/CSS for the on-screen controls and readouts, with Tweakpane 4 for the expert panel.
 - **Atmosphere:** `@takram/three-atmosphere@0.19.x` (MIT) through its `./webgpu` entry. Bruneton precomputed scattering, `skyBackground()`, stars, `AerialPerspectiveNode`. Backup: our own lite atmosphere written in TSL.
 - **Data pipeline:** Python managed with `uv` (rasterio, xarray, numpy, numba, scipy, Pillow), plus KTX-Software `ktx` for KTX2 (Basis ETC1S/UASTC, R16F + zstd).
