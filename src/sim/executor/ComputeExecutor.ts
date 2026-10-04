@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu'
 import { Fn, globalId, ivec2, textureLoad, textureStore, uvec2 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import type { Executor, Field, Kernel, Loader } from './types'
+import { StaticField, type Executor, type Field, type Kernel, type Loader } from './types'
 
 const WG = 8
 
@@ -28,13 +28,17 @@ export class ComputeExecutor implements Executor {
     return new ComputeField(width, height)
   }
 
+  createStatic(width: number, height: number, data: Float32Array): Field {
+    return new StaticField(width, height, data)
+  }
+
   pass<I extends string>(kernel: Kernel<I>, inputs: Record<I, Field>, output: Field): () => void {
     const out = output as ComputeField
     const fn = Fn(() => {
       const p = ivec2(globalId.xy)
       const loaders = {} as Record<I, Loader>
       for (const k in inputs) {
-        const tex = (inputs[k] as ComputeField).texture
+        const tex = (inputs[k] as ComputeField | StaticField).texture
         loaders[k] = (q: Node) => textureLoad(tex, q) as unknown as Node
       }
       // Out-of-bounds textureStore is a no-op in WGSL, so partial edge workgroups need no guard.

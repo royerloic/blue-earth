@@ -35,7 +35,7 @@ export async function runExecutorSpike(renderer: THREE.WebGPURenderer, backend: 
   // Correctness: small grid vs CPU reference.
   const W = 96
   const H = 64
-  const STEPS = 200
+  const STEPS = 201 // odd: a vertical mirror per step would not cancel out
   const ref = cpuReference(W, H, STEPS)
   for (const exec of execs) {
     const { out } = await runOn(exec, W, H, STEPS)

@@ -34,6 +34,14 @@ for (const backend of ['webgpu', 'webgl2']) {
   })
 }
 
+for (const backend of ['webgpu', 'webgl2']) {
+  test(`Classic 2004 GPU port is bit-exact with the Java golden frames [${backend}]`, async ({ page }) => {
+    test.setTimeout(240_000)
+    const { data } = await runSpike(page, `spike=classic&backend=${backend}`)
+    for (const r of data) expect(r.mismatches, r.executor).toEqual({})
+  })
+}
+
 test('hello globe renders a non-blank frame', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))

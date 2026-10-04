@@ -2,6 +2,8 @@ import { createRenderer } from '../src/core/renderer'
 import { runExecutorSpike } from './a-executors/run'
 import { runAtmosphereSpike } from './c-atmosphere/run'
 import { runKtxSpike } from './d-ktx/run'
+import { runClassicSpike } from './classic/run'
+import { probeUniforms } from './classic/uniformProbe'
 
 // M0 spike harness. Results are logged as `SPIKE <json>` for tools/shot.mjs to collect.
 async function main() {
@@ -16,6 +18,8 @@ async function main() {
   const which = new URLSearchParams(location.search).get('spike') ?? 'a'
   try {
     if (which === 'a') report('executors', await runExecutorSpike(renderer, backend))
+    if (which === 'uniforms') report('uniforms', await probeUniforms(renderer))
+    if (which === 'classic') report('classic', await runClassicSpike(renderer, backend))
     if (which === 'd') report('ktx', await runKtxSpike(renderer))
     if (which === 'c') report('atmosphere', await runAtmosphereSpike(renderer))
   } catch (e) {

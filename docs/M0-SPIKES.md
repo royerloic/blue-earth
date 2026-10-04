@@ -20,4 +20,7 @@ WebGPU; RTT 0.2 ms/step on WebGL2. That leaves a large budget for the real MUSCL
 - Static globe textures: **EAC 6-layer arrays with gutters**, not cube maps.
 - TSL gotchas: `vec4(float, 1)` is an invalid constructor and silently draws nothing. Fullscreen
   passes into targets without depth need `depthTest = false`. Image textures are flipY'd (v = 0 at the bottom).
+- **WebGL coordinate trap** (found in M1): three flips `screenCoordinate.y` *and* `textureLoad` on
+  render targets, but not on data textures. RTTExecutor therefore uses three's convention as-is, and
+  flips rows only on readback. Spike a now runs an odd number of steps, so a per-step mirror can't cancel out.
 - Keep both executors. RTT is competitive on WebGPU, so the choice per kernel can be benchmark-driven.

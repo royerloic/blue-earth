@@ -1,3 +1,4 @@
+import * as THREE from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 
 /** Reads one texel of a named input field at integer texel coordinate `p` (ivec2). */
@@ -19,7 +20,24 @@ export interface Field {
 export interface Executor {
   readonly kind: 'compute' | 'rtt'
   createField(width: number, height: number): Field
+  /** A read-only input field initialised from RGBA float data (row-major, 4 floats per texel). */
+  createStatic(width: number, height: number, data: Float32Array): Field
   /** Compiles `kernel`, reading `inputs`, writing `output`. Returns a runnable pass. */
   pass<I extends string>(kernel: Kernel<I>, inputs: Record<I, Field>, output: Field): () => void
   read(field: Field): Promise<Float32Array>
+}
+
+/** Read-only field backed by a float DataTexture; usable as an input by every executor. */
+export class StaticField implements Field {
+  readonly texture: THREE.DataTexture
+  constructor(
+    readonly width: number,
+    readonly height: number,
+    data: Float32Array,
+  ) {
+    this.texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType)
+    this.texture.minFilter = this.texture.magFilter = THREE.NearestFilter
+    this.texture.generateMipmaps = false
+    this.texture.needsUpdate = true
+  }
 }
