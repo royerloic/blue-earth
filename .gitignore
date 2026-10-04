@@ -6,3 +6,4 @@ test-results/
 playwright-report/
 .DS_Store
 .tools/
+tools/java-golden/build/

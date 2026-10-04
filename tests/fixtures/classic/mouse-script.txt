@@ -1,0 +1,11 @@
+# Scripted mouse for the Classic 2004 golden frames (shared by the Java harness and TS tests).
+# Per line: fromFrame toFrame x0 y0 x1 y1 left(0/1). Frames are BlueEarth's lTime (1-based).
+# Position is linearly interpolated with integer floor; frames not covered: (400, 300), button up.
+1   200  100 200  700 400  0
+201 260  400 300  400 300  0
+300 320  270 290  270 290  1
+330 345  700 330  700 330  1
+350 400  330 380  480 380  1
+401 460  200 200  260 200  0
+461 480  300 595  500 595  1
+481 600  500 595  400 300  0
