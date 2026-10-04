@@ -1,6 +1,7 @@
 import { createRenderer } from '../src/core/renderer'
 import { runExecutorSpike } from './a-executors/run'
 import { runAtmosphereSpike } from './c-atmosphere/run'
+import { runKtxSpike } from './d-ktx/run'
 
 // M0 spike harness. Results are logged as `SPIKE <json>` for tools/shot.mjs to collect.
 async function main() {
@@ -15,6 +16,7 @@ async function main() {
   const which = new URLSearchParams(location.search).get('spike') ?? 'a'
   try {
     if (which === 'a') report('executors', await runExecutorSpike(renderer, backend))
+    if (which === 'd') report('ktx', await runKtxSpike(renderer))
     if (which === 'c') report('atmosphere', await runAtmosphereSpike(renderer))
   } catch (e) {
     report('error', String((e as Error).stack ?? e))
