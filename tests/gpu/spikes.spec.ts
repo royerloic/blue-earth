@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 
 /** Opens a spike page and returns the payload it logs as `SPIKE {json}`. */
@@ -42,16 +43,24 @@ for (const backend of ['webgpu', 'webgl2']) {
   })
 }
 
-test('hello globe renders a non-blank frame', async ({ page }) => {
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(e.message))
+for (const backend of ['webgpu', 'webgl2']) {
+  test(`globe renders with atmosphere [${backend}]`, async ({ page }) => {
+    test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.goto(`/?backend=${backend}&date=2026-07-09T11:00:00Z`)
+    await expect(page.locator('.be-hud')).toContainText(backend)
+    await page.waitForTimeout(2500)
+    const shot = await page.locator('canvas').screenshot()
+    expect(shot.byteLength).toBeGreaterThan(200_000)
+    expect(errors).toEqual([])
+  })
+}
+
+test('globe page explains missing data instead of failing silently', async ({ page }) => {
+  await page.route('**/data/manifest.json', (r) => r.fulfill({ status: 404, body: 'nope' }))
   await page.goto('/')
-  await expect(page.locator('#hud')).toContainText('Blue Earth')
-  await page.waitForTimeout(1500)
-  const shot = await page.locator('canvas').screenshot()
-  // A blank black canvas compresses to a tiny PNG; a rendered globe does not.
-  expect(shot.byteLength).toBeGreaterThan(50_000)
-  expect(errors).toEqual([])
+  await expect(page.locator('#hud')).toContainText('Classic 2004')
 })
 
 test('Classic mode: waves, sea-level strip and right-click exit', async ({ page }) => {
@@ -75,7 +84,6 @@ test('Classic mode: waves, sea-level strip and right-click exit', async ({ page 
   expect(errors).toEqual([])
 })
 
-import { existsSync } from 'node:fs'
 
 test('globe data tiers load (skipped until the pipeline has been run)', async ({ page }) => {
   test.skip(!existsSync('public/data/manifest.json'), 'run: cd pipeline && uv run python -m blueearth_pipeline.build')
