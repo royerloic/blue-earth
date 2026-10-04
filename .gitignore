@@ -1,0 +1,7 @@
+node_modules/
+dist/
+pipeline/data/
+pipeline/.venv/
+test-results/
+playwright-report/
+.DS_Store

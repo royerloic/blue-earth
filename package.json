@@ -1,0 +1,29 @@
+{
+  "name": "blue-earth",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:gpu": "playwright test"
+  },
+  "dependencies": {
+    "@takram/three-atmosphere": "0.19.1",
+    "postprocessing": "6.39.5",
+    "three": "0.186.1",
+    "tweakpane": "4.0.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.19.1",
+    "@types/three": "0.186.0",
+    "@webgpu/types": "0.1.74",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.11"
+  }
+}
