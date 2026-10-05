@@ -167,7 +167,10 @@ export class OceanSim {
       maxDown = Math.min(maxDown, uz)
     }
     this.solver.addEta(delta)
+    // Snapshot after the uplift: arrivals are changes relative to the initial deformation.
+    this.solver.clearDiagnostics()
     this.updateDisplay()
+    this.updateDiag()
     return { maxUp, maxDown }
   }
 

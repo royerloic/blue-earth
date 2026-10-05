@@ -44,10 +44,11 @@ export class SWESolver {
   private readonly impulseDir = Array.from({ length: MAX_IMPULSES }, () => uniform(new THREE.Vector4()))
   private readonly impulseSigma = Array.from({ length: MAX_IMPULSES }, () => uniform(1))
   private readonly states: Field[]
-  /** Diagnostics (max anomaly, first arrival time s or −1, max inundation depth, ·), ping-pong. */
+  /** Diagnostics (max anomaly, first arrival s or −1, max inundation, anomaly at reset), ping-pong. */
   private readonly diags: Field[]
   private readonly diagPass: (() => void)[][] = []
-  private readonly diagClear: (() => void)[] = []
+  /** diagClear[stateIndex][diagIndex] */
+  private readonly diagClear: (() => void)[][] = []
   private dp = 0
   /** Simulated seconds since the last diagnostics reset (drives arrival times). */
   readonly clock = uniform(0)
@@ -115,11 +116,6 @@ export class SWESolver {
     this.diags = [exec.createField(W, H), exec.createField(W, H)]
     this.delta = exec.createStatic(W, H, new Float32Array(W * H * 4))
     exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
-    for (const d of this.diags) {
-      const clear = exec.pass(() => vec4(0, -1, 0, 0) as unknown as Node, {}, d)
-      this.diagClear.push(clear)
-      clear()
-    }
     this.manning.value = p.manning
     this.coriolis.value = p.coriolis ? 1 : 0
 
@@ -143,9 +139,21 @@ export class SWESolver {
       const rest = select(ocean, max(S, b.x), b.x)
       const h = max(st.x.sub(b.x), 0) as any
       const anomaly = select(h.greaterThan(0.05), st.x.sub(rest), float(0)) as any
-      const arrived = dg.y.lessThan(0).and(anomaly.greaterThan(this.arrivalThreshold))
+      // Arrival = a change of the anomaly since the reset snapshot (dg.w), so a static source
+      // deformation (Okada far field) doesn't count as the wave.
+      const arrived = dg.y.lessThan(0).and(abs(anomaly.sub(dg.w)).greaterThan(this.arrivalThreshold))
       const inund = select(ocean.not(), h, float(0))
-      return vec4(max(dg.x, anomaly), select(arrived, this.clock, dg.y), max(dg.z, inund), 0) as unknown as Node
+      return vec4(max(dg.x, anomaly), select(arrived, this.clock, dg.y), max(dg.z, inund), dg.w) as unknown as Node
+    }
+    // Reset: snapshot the current anomaly (in .w), no maxima, no arrivals.
+    const kc: Kernel<In> = ({ u, bed }, q) => {
+      const st = u(q) as any
+      const b = bed(q) as any
+      const S = this.seaLevel as any
+      const rest = select(b.y.lessThanEqual(S), max(S, b.x), b.x)
+      const h = max(st.x.sub(b.x), 0) as any
+      const anomaly = select(h.greaterThan(0.05), st.x.sub(rest), float(0))
+      return vec4(0, -1, 0, anomaly) as unknown as Node
     }
     const ks: Kernel<In> = ({ bed }, q) => {
       const b = bed(q) as any
@@ -162,7 +170,9 @@ export class SWESolver {
       this.seaPass.push(exec.pass(ks, { u: A, base: A, ...this.statics }, B))
       this.addPass.push(exec.pass(ka, { u: A, base: this.delta, ...this.statics }, B))
       this.diagPass.push([0, 1].map((d) => exec.pass(kd, { u: A, base: this.diags[d], ...this.statics }, this.diags[1 - d])))
+      this.diagClear.push(this.diags.map((d) => exec.pass(kc, { u: A, base: A, ...this.statics }, d)))
     }
+    this.clearDiagnostics()
   }
 
   /** The field holding the current state (η, mx, my, mz). */
@@ -192,7 +202,7 @@ export class SWESolver {
 
   /** Clears max height / arrival time and restarts the diagnostics clock. */
   clearDiagnostics() {
-    for (const c of this.diagClear) c()
+    for (const c of this.diagClear[this.cur]) c()
     this.clock.value = 0
   }
 

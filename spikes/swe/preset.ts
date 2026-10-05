@@ -9,6 +9,8 @@ export async function runPresetSpike(renderer: THREE.WebGPURenderer, backend: st
   const preset = PRESETS.find((p) => p.id === (q.get('preset') ?? 'sumatra2004'))!
   const data = await loadGlobeData(renderer, q.get('tier') ?? 'medium')
   const sim = new OceanSim(renderer, backend, data, 0)
+  // A visible wave (5 cm) rather than the first 1 cm: closer to reported arrival times.
+  sim.solver.arrivalThreshold.value = Number(q.get('threshold') ?? 0.05)
   const uplift = sim.applyFault(preset.segments!)
   const hours = Number(q.get('hours') ?? 9)
   const steps = Math.ceil((hours * 3600) / sim.dt)
