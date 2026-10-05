@@ -79,6 +79,8 @@ export function createGlobeMaterial(
   sunDirection: Node,
   ocean?: OceanDisplay,
   debug?: string | null,
+  /** Vertex-stage geometry: unit direction, skirt flag and patch size (LOD mesh). */
+  lod?: { dir: Node; skirt: Node; patchSize: Node },
 ): THREE.MeshPhysicalNodeMaterial {
   const { n, gutter } = data
   const ocean_ = ocean
@@ -126,12 +128,18 @@ export function createGlobeMaterial(
   const material = new THREE.MeshPhysicalNodeMaterial({ ior: 1.33 })
 
   // Vertex: radial displacement of the unit cube-sphere.
-  const dirGeom = any(positionGeometry).normalize()
+  const dirGeom = lod ? any(lod.dir) : any(positionGeometry).normalize()
   const vs = surface(dirGeom)
-  material.positionNode = dirGeom.mul(float(EARTH_RADIUS).add(vs.level.mul(u.exaggeration)))
+  let radius = float(EARTH_RADIUS).add(vs.level.mul(u.exaggeration))
+  if (lod) {
+    // Skirts drop by a fraction of the patch width (plus relief), hiding LOD cracks.
+    const drop = any(lod.patchSize).mul(EARTH_RADIUS * 0.02).add(any(u.exaggeration).mul(300))
+    radius = radius.sub(any(lod.skirt).mul(drop))
+  }
+  material.positionNode = dirGeom.mul(radius)
 
   // Fragment.
-  const d = any(varying(positionGeometry, 'vGlobeDir')).normalize()
+  const d = any(varying(dirGeom, 'vGlobeDir')).normalize()
   const s = surface(d)
 
   // Height-derived normal from ±1 texel samples along a local east/north frame.

@@ -21,6 +21,13 @@ SOURCES: dict[str, dict[str, str]] = {
         }
         for m, name in MONTHS.items()
     },
+    **{
+        f"bmng_hi_{m:02d}": {
+            "url": f"{NASA}/images/bmng/bmng-base/{name}/world.2004{m:02d}.3x21600x10800.jpg",
+            "credit": "NASA Earth Observatory, Blue Marble Next Generation (R. Stöckli)",
+        }
+        for m, name in MONTHS.items()
+    },
     "black_marble": {
         "url": f"{NASA}/images/imagerecords/144000/144898/BlackMarble_2016_3km.jpg",
         "credit": "NASA Earth Observatory / GSFC, Black Marble 2016 (M. Román et al.)",

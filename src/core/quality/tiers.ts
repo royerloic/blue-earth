@@ -1,6 +1,6 @@
 /** Data/simulation quality tiers (see pipeline TIERS) and the startup choice. */
-export type Tier = 'low' | 'medium'
-export const TIERS: Tier[] = ['low', 'medium']
+export type Tier = 'low' | 'medium' | 'high'
+export const TIERS: Tier[] = ['low', 'medium', 'high']
 const KEY = 'blue-earth.tier'
 
 /**

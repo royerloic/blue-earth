@@ -7,6 +7,7 @@ import type { RendererInfo } from '../../core/renderer'
 import { celestialAt, monthWeights } from '../../core/time/solar'
 import { Atmosphere } from '../../render/atmosphere/atmosphere'
 import { createCubeSphere } from '../../render/globe/cubeSphere'
+import { LodSphere } from '../../render/globe/lodSphere'
 import { createGlobeMaterial, GlobeUniforms } from '../../render/globe/globeMaterial'
 import { Hud } from '../../ui/hud'
 import { AutoTune } from '../../core/quality/autoTune'
@@ -56,11 +57,18 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   if (q.has('wind')) uniforms.setWind(Number(q.get('wind')))
   if (q.has('raymarch')) atmosphere.context.raymarchScattering = q.get('raymarch') !== '0'
   const oceanDisplay = { texture: sim.displayTexture, diagTexture: sim.diagTexture, n: sim.N }
-  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(first, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug')))
+  // Chunked-LOD globe (default) or the fixed 6×256² cube-sphere (?lod=0).
+  const useLod = q.get('lod') !== '0'
+  const lodNodes = useLod ? LodSphere.nodes() : undefined
+  const makeMaterial = (d: typeof first) => createGlobeMaterial(d, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug'), lodNodes)
+  const maxLevel = (n: number) => Math.round(Math.log2(n / 32))
+  const lod = useLod ? new LodSphere(makeMaterial(first), 3, maxLevel(progressive ? data.n : first.n)) : null
+  const globe: THREE.Mesh = lod ? lod.mesh : new THREE.Mesh(createCubeSphere(256), makeMaterial(first))
   if (progressive)
     void loadGlobeData(renderer, tier, undefined, { sim: data.sim }).then((full) => {
       const old = globe.material as THREE.Material
-      globe.material = createGlobeMaterial(full, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug'))
+      globe.material = makeMaterial(full)
+      if (lod) lod.maxLevel = maxLevel(full.n)
       old.dispose()
       console.log(`upgraded to ${tier} imagery after ${(performance.now() - tLoad).toFixed(0)} ms`)
       tierNote.textContent = `tier ${tier}`
@@ -71,7 +79,8 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.enablePan = false
-  controls.minDistance = EARTH_RADIUS + 400_000
+  // Closest zoom follows the imagery resolution (and needs the LOD mesh).
+  controls.minDistance = EARTH_RADIUS + (useLod ? { low: 400_000, medium: 300_000, high: 300_000 }[tier] ?? 400_000 : 400_000)
   controls.maxDistance = EARTH_RADIUS * 12
 
   // --- Sun & time ---------------------------------------------------------------------
@@ -226,6 +235,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       { value: '', text: `Auto (now: ${tier})` },
       { value: 'low', text: 'Low — 5 MB, 39 km sim cells' },
       { value: 'medium', text: 'Medium — 19 MB, 20 km sim cells' },
+      { value: 'high', text: 'High — 61 MB, 5 km imagery, close zoom' },
     ],
     (v) => {
       rememberTier((v || 'auto') as Tier | 'auto')
@@ -237,7 +247,10 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   )
   quality.value = localStorage.getItem('blue-earth.tier') ?? ''
   const perfText = hud.text('Perf')
-  hud.slider('Relief', 1, 50, 1, uniforms.exaggeration.value, (v) => `×${v}`, (v) => (uniforms.exaggeration.value = v))
+  // Relief exaggeration as set for orbital views; it fades toward ×1.5 as the camera comes
+  // down (at 200 km a ×15 Alps would be 70 km tall).
+  let reliefSetting = uniforms.exaggeration.value
+  hud.slider('Relief', 1, 50, 1, reliefSetting, (v) => `×${v}`, (v) => (reliefSetting = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
   const setDay = (doy: number) => {
     const t = new Date(Date.UTC(date.getUTCFullYear(), 0, 1) + doy * 86_400_000)
@@ -249,8 +262,8 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     date = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) + v * 3_600_000)
   })
   hud.slider('Time-lapse', 0, 24, 0.5, timeLapse, (v) => (v ? `${v} h/s` : 'off'), (v) => (timeLapse = v))
-  uniforms.cloudAmount.value = q.get('clouds') === '0' ? 0 : 1
-  hud.toggle('Clouds', uniforms.cloudAmount.value > 0, (v) => (uniforms.cloudAmount.value = v ? 1 : 0))
+  let cloudsOn = q.get('clouds') !== '0'
+  hud.toggle('Clouds', cloudsOn, (v) => (cloudsOn = v))
   const sunText = hud.text('Sun')
   sunText.textContent = 'real (date & time)'
   const posText = hud.text('Cursor')
@@ -400,6 +413,12 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     camera.updateProjectionMatrix()
     controls.rotateSpeed = Math.min(1, Math.max(0.05, (dist - EARTH_RADIUS) / (EARTH_RADIUS * 3)))
     controls.update()
+    if (lod) lod.update(camera, EARTH_RADIUS)
+    const altKm = (camera.position.length() - EARTH_RADIUS) / 1000
+    const k = Math.min(1, Math.max(0, (altKm - 200) / 2800))
+    uniforms.exaggeration.value = 1.5 + (reliefSetting - 1.5) * k * k * (3 - 2 * k)
+    // The cloud layer (2048-px source, ~20 km/px) thins out close up instead of turning blocky.
+    uniforms.cloudAmount.value = cloudsOn ? 0.35 + 0.65 * Math.min(1, Math.max(0, (altKm - 400) / 2100)) : 0
     atmosphere.render()
   })
 }

@@ -118,3 +118,19 @@ export function sampleFaceAtlas(tex: Texture, d: Node, n: number, gutter = 1): N
   }
   return mix(mix(ld(0, 0), ld(1, 0), w.x), mix(ld(0, 1), ld(1, 1), w.x), w.y) as unknown as Node
 }
+
+/**
+ * TSL: unit ECEF direction for EAC coordinates (s, t) ∈ [0, 1]² on face `face` (float 0..5),
+ * i.e. faceSTToDirection on the GPU (used by the LOD mesh's vertex shader).
+ */
+export function faceSTDirection(face: Node, s: Node, t: Node): Node {
+  const f = face as any
+  const a = (s as any).mul(2).sub(1).mul(Math.PI / 4).tan()
+  const b = (t as any).mul(2).sub(1).mul(Math.PI / 4).tan()
+  const pick = (k: 0 | 1 | 2) => {
+    let v: any = vec3(...FACE_BASIS[5][k])
+    for (let i = 4; i >= 0; i--) v = select(f.lessThan(i + 0.5), vec3(...FACE_BASIS[i][k]), v)
+    return v
+  }
+  return pick(0).add(pick(1).mul(a)).add(pick(2).mul(b)).normalize() as unknown as Node
+}

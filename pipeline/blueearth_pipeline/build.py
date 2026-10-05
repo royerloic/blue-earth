@@ -23,8 +23,10 @@ Image.MAX_IMAGE_PIXELS = None
 OUT = Path(__file__).resolve().parents[2] / "public" / "data"
 GUTTER = 4
 TIERS = {
-    "low": {"display": 512, "sim": 256},
-    "medium": {"display": 1024, "sim": 512},
+    "low": {"display": 512, "sim": 256, "albedo": "bmng"},
+    "medium": {"display": 1024, "sim": 512, "albedo": "bmng"},
+    # High: 2048² display faces (~2.4–4.9 km/px) from the 21600-px Blue Marble; same sim grid.
+    "high": {"display": 2048, "sim": 512, "albedo": "bmng_hi"},
 }
 DATA_VERSION = 1
 
@@ -53,11 +55,13 @@ def main(tiers: list[str]) -> None:
     bed = dem.load_etopo("etopo_bed")
     land_eq = dem.ne_raster("ne_land")
     water_eq = dem.inland_water_mask(dem.ne_raster("ne_lakes"), land_eq)
-    albedo_src = {m: image(f"bmng_{m:02d}", "RGB") for m in MONTHS}
     night_src = image("black_marble", "RGB")
     clouds_src = image("clouds", "L")
 
-    manifest = {"version": DATA_VERSION, "gutter": GUTTER, "tiers": {}, "credits": sorted({s["credit"] for s in SOURCES.values()})}
+    manifest_path = OUT / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    manifest.update({"version": DATA_VERSION, "gutter": GUTTER, "credits": sorted({s["credit"] for s in SOURCES.values()})})
+    manifest.setdefault("tiers", {})
     for tier in tiers:
         cfg = TIERS[tier]
         n, ns = cfg["display"], cfg["sim"]
@@ -75,11 +79,13 @@ def main(tiers: list[str]) -> None:
         encode_half(terrain_layers(dem.build(ns, surface, bed, water_eq, land_eq), 0), out / "sim.ktx2")
         files["sim"] = "sim.ktx2"
 
-        log(f"{tier}: albedo")
+        log(f"{tier}: albedo ({cfg['albedo']})")
         files["albedo"] = {}
-        for m, src in albedo_src.items():
+        for m in MONTHS:
+            src = image(f"{cfg['albedo']}_{m:02d}", "RGB")
             name = f"albedo-{m:02d}.ktx2"
             encode_color(to_u8(to_faces(src, n, GUTTER)), out / name)
+            del src
             files["albedo"][f"{m:02d}"] = name  # type: ignore[index]
         log(f"{tier}: night lights, clouds")
         encode_color(to_u8(to_faces(night_src, n, GUTTER)), out / "night.ktx2")
@@ -91,9 +97,10 @@ def main(tiers: list[str]) -> None:
         manifest["tiers"][tier] = {"display": n, "sim": ns, "files": files, "bytes": sum(sizes.values())}
         log(f"{tier}: {sum(sizes.values()) / 1e6:.1f} MB " + ", ".join(f"{k} {v / 1e6:.2f}" for k, v in sorted(sizes.items())))
 
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest["tiers"] = {k: manifest["tiers"][k] for k in TIERS if k in manifest["tiers"]}
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     log("done")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:] or list(TIERS))
+    main(sys.argv[1:] or ["low", "medium"])

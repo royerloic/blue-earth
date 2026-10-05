@@ -24,6 +24,26 @@
     "sha256": "ccfd9b7a5e5ee601e1466556716bba50ea418f3a8e068ab0194ae0425815b1b0",
     "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/october/world.200410.3x5400x2700.jpg"
   },
+  "bmng_hi_01": {
+    "bytes": 23716627,
+    "sha256": "c2f2c80a352518cfea23d462dad6f6e778375ddd74bbec5786bcfc85cc49c61d",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/january/world.200401.3x21600x10800.jpg"
+  },
+  "bmng_hi_04": {
+    "bytes": 22209925,
+    "sha256": "3bd13f173555eb24451c45d3a83ca177baca02e9a8bdd9fa3e4989f7b496ce6b",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/april/world.200404.3x21600x10800.jpg"
+  },
+  "bmng_hi_07": {
+    "bytes": 21125326,
+    "sha256": "dea8b4dc8a4f93f5f8bce0c8c85a508a178e7901e9ed8e6bf86e6ce7ef6d61e2",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/july/world.200407.3x21600x10800.jpg"
+  },
+  "bmng_hi_10": {
+    "bytes": 22853895,
+    "sha256": "bf568ceca2ad55e9c8dd7bcedfd0e419201d03bb560206a7bfa2cc57c1e04c64",
+    "url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/october/world.200410.3x21600x10800.jpg"
+  },
   "clouds": {
     "bytes": 829367,
     "sha256": "daddaad84d7a33bbbc86cdda3f591099f57cee8607b7bcf3b67eb7e4f7a1c793",
