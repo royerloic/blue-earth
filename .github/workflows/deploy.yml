@@ -13,9 +13,9 @@ concurrency: { group: pages, cancel-in-progress: true }
 
 env:
   DATA_TAG: data-v1
-  # Tiers served from Pages (1 GB site / 100 GB-month bandwidth). High (61 MB) needs a CDN:
-  # set VITE_ASSET_BASE to it and drop "high" here.
-  PAGES_TIERS: low medium
+  # Tiers served from Pages (1 GB site / 100 GB-month bandwidth soft limit). To move High (61 MB)
+  # to a CDN later: set VITE_ASSET_BASE and drop "high" here.
+  PAGES_TIERS: low medium high
 
 jobs:
   build:
