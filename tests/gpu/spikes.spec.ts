@@ -51,7 +51,7 @@ for (const backend of ['webgpu', 'webgl2']) {
     await page.goto(`/?backend=${backend}&date=2026-07-09T11:00:00Z&intro=0`)
     await expect(page.locator('.be-hud')).toContainText(backend)
     await page.waitForTimeout(2500)
-    const shot = await page.locator('canvas').screenshot()
+    const shot = await page.locator('body > canvas').screenshot()
     expect(shot.byteLength).toBeGreaterThan(200_000)
     expect(errors).toEqual([])
   })
@@ -63,7 +63,7 @@ test('clicking the ocean drops a wave that changes the picture', async ({ page }
   await page.goto('/?date=2026-07-09T23:00:00Z&lat=5&lon=-160&alt=9000&clouds=0&warp=1200&hud=0&intro=0')
   await expect(page.locator('.be-hud')).toBeAttached()
   await page.waitForTimeout(2500)
-  const box = await page.locator('canvas').boundingBox()
+  const box = await page.locator('body > canvas').boundingBox()
   const crop = { x: box!.width / 2 - 200, y: box!.height / 2 - 200, width: 400, height: 400 }
   const before = await page.screenshot({ clip: crop })
   const drop = page.waitForEvent('console', (m) => m.text().startsWith('drop'))
@@ -84,6 +84,23 @@ test('Sumatra 2004 preset: modelled arrival times match observations (±35%)', a
     expect(t, k).not.toBeNull()
     expect(Math.abs(t / obs - 1), `${k}: ${t} h vs ${obs} h`).toBeLessThan(0.35)
   }
+})
+
+test('a preset places tide gauges that record the wave', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  test.setTimeout(90_000)
+  await page.goto('/?preset=tohoku2011&intro=0&warp=3000')
+  await expect(page.locator('.be-gauges')).toBeVisible()
+  await expect(page.locator('.be-gauge-marker')).toHaveCount(4)
+  await page.waitForTimeout(6000)
+  // The chart has drawn non-trivial content (Kushiro sees the wave within the first hour).
+  const ink = await page.locator('.be-gauges canvas').evaluate((c: HTMLCanvasElement) => {
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+    let n = 0
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++
+    return n
+  })
+  expect(ink).toBeGreaterThan(2000)
 })
 
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
@@ -113,13 +130,13 @@ test('Classic mode: waves, sea-level strip and right-click exit', async ({ page 
   // 800×600 fitted into 1280×800 → scale 4/3, x offset 106.7.
   const X = (x: number) => 106.7 + (x * 4) / 3
   const Y = (y: number) => (y * 4) / 3
-  const before = await page.locator('canvas').screenshot()
+  const before = await page.locator('body > canvas').screenshot()
   await page.mouse.move(X(270), Y(290))
   await page.mouse.down()
   await page.waitForTimeout(400)
   await page.mouse.up()
   await page.waitForTimeout(800)
-  const after = await page.locator('canvas').screenshot()
+  const after = await page.locator('body > canvas').screenshot()
   expect(Buffer.compare(before, after)).not.toBe(0)
   await page.mouse.click(X(400), Y(300), { button: 'right' })
   await page.waitForURL((u) => !u.search.includes('mode=classic'))

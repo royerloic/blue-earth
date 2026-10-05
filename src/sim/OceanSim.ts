@@ -134,6 +134,34 @@ export class OceanSim {
     this.updateDiag()
   }
 
+  /** Nearest cell id to an ECEF direction (linear scan; called rarely). */
+  cellAt(p: THREE.Vector3, wetOnly = false): number {
+    const g = this.grid
+    const d = p.clone().normalize()
+    let best = -1
+    let bd = -2
+    for (let c = 0; c < g.cells; c++) {
+      if (wetOnly && !(this.F[c] <= this.seaLevel && this.B[c] < this.seaLevel)) continue
+      const v = g.center[c * 3] * d.x + g.center[c * 3 + 1] * d.y + g.center[c * 3 + 2] * d.z
+      if (v > bd) {
+        bd = v
+        best = c
+      }
+    }
+    return best
+  }
+
+  /** A random deep-ocean point (for the screensaver). */
+  randomOceanPoint(minDepth = 2000): THREE.Vector3 {
+    const g = this.grid
+    for (let tries = 0; tries < 10_000; tries++) {
+      const c = Math.floor(Math.random() * g.cells)
+      if (this.F[c] <= this.seaLevel && this.B[c] < this.seaLevel - minDepth)
+        return new THREE.Vector3(g.center[c * 3], g.center[c * 3 + 1], g.center[c * 3 + 2])
+    }
+    return new THREE.Vector3(1, 0, 0)
+  }
+
   /** Calm sea: the ocean back at rest at the current sea level, diagnostics cleared. */
   calm() {
     this.setSeaLevel(this.seaLevel)

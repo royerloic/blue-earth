@@ -103,7 +103,8 @@ function injectStyle() {
   const s = document.createElement('style')
   s.id = 'be-hud-style'
   s.textContent = `
-  .be-hud { position: fixed; left: 14px; bottom: 14px; padding: 10px 14px 10px; min-width: 300px;
+  .be-hud { position: fixed; left: 14px; bottom: 14px; padding: 10px 14px 10px; min-width: 300px; max-width: 360px;
+    max-height: calc(100vh - 28px); overflow-y: auto;
     background: rgba(6, 10, 20, 0.62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(140, 170, 255, 0.15); border-radius: 10px; color: #cfdcff;
     font: 12px/1.5 system-ui, -apple-system, sans-serif; user-select: none; }

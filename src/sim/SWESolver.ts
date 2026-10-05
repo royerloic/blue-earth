@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu'
-import { abs, float, floor, int, ivec2, max, min, mod, select, sqrt, uniform, vec3, vec4 } from 'three/tsl'
+import { abs, float, floor, int, ivec2, max, min, mod, select, sqrt, uniform, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Executor, Field, Kernel, Loader } from './executor/types'
 import { OPPOSITE, type CubeGrid } from './grid'
@@ -19,6 +19,7 @@ import { DEFAULT_PARAMS, type SWEParams } from './swe'
  */
 type In = 'u' | 'base' | 'nb' | 'cell' | 'g0' | 'g1' | 'g2' | 'g3' | 'bed'
 export const MAX_IMPULSES = 8
+export const MAX_GAUGES = 8
 
 const any = (n: unknown) => n as any
 const PACK = 4096
@@ -60,6 +61,10 @@ export class SWESolver {
   private readonly impulse: (() => void)[] = []
   private readonly seaPass: (() => void)[] = []
   private readonly addPass: (() => void)[] = []
+  /** Gauge texels (x, y) in the atlas; (−1, −1) = unused. */
+  readonly gaugeTexel = Array.from({ length: MAX_GAUGES }, () => uniform(new THREE.Vector2(-1, -1)))
+  private readonly gaugeField: Field
+  private readonly gaugePass: (() => void)[] = []
   private readonly delta: Field
   readonly seaLevel = uniform(0)
   private readonly p: SWEParams
@@ -115,6 +120,7 @@ export class SWESolver {
     this.states = [exec.createField(W, H), exec.createField(W, H), exec.createField(W, H)]
     this.diags = [exec.createField(W, H), exec.createField(W, H)]
     this.delta = exec.createStatic(W, H, new Float32Array(W * H * 4))
+    this.gaugeField = exec.createField(MAX_GAUGES, 1)
     exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
     this.manning.value = p.manning
     this.coriolis.value = p.coriolis ? 1 : 0
@@ -145,6 +151,19 @@ export class SWESolver {
       const inund = select(ocean.not(), h, float(0))
       return vec4(max(dg.x, anomaly), select(arrived, this.clock, dg.y), max(dg.z, inund), dg.w) as unknown as Node
     }
+    // Gauges: one output texel per gauge, (anomaly, h, ·, ·) at that gauge's cell.
+    const kg: Kernel<In> = ({ u, bed }, q) => {
+      const gx = any(q).x
+      let t: any = vec2(-1, -1)
+      for (let k = 0; k < MAX_GAUGES; k++) t = select(gx.equal(k), any(this.gaugeTexel[k]), t)
+      const tq = ivec2(int(max(t.x, 0)), int(max(t.y, 0))) as unknown as Node
+      const st = u(tq) as any
+      const b = bed(tq) as any
+      const S = this.seaLevel as any
+      const rest = select(b.y.lessThanEqual(S), max(S, b.x), b.x)
+      const h = max(st.x.sub(b.x), 0) as any
+      return vec4(select(t.x.lessThan(0), float(0), st.x.sub(rest)), h, 0, 1) as unknown as Node
+    }
     // Reset: snapshot the current anomaly (in .w), no maxima, no arrivals.
     const kc: Kernel<In> = ({ u, bed }, q) => {
       const st = u(q) as any
@@ -171,6 +190,7 @@ export class SWESolver {
       this.addPass.push(exec.pass(ka, { u: A, base: this.delta, ...this.statics }, B))
       this.diagPass.push([0, 1].map((d) => exec.pass(kd, { u: A, base: this.diags[d], ...this.statics }, this.diags[1 - d])))
       this.diagClear.push(this.diags.map((d) => exec.pass(kc, { u: A, base: A, ...this.statics }, d)))
+      this.gaugePass.push(exec.pass(kg, { u: A, base: A, ...this.statics }, this.gaugeField))
     }
     this.clearDiagnostics()
   }
@@ -245,6 +265,21 @@ export class SWESolver {
       this.diagPass[this.cur][this.dp]()
       this.dp ^= 1
     }
+  }
+
+  /** Sets gauge k to cell id c (or −1 to remove). */
+  setGauge(k: number, c: number) {
+    if (c < 0) this.gaugeTexel[k].value.set(-1, -1)
+    else {
+      const t = this.texelOf(c) / 4
+      this.gaugeTexel[k].value.set(t % this.width, Math.floor(t / this.width))
+    }
+  }
+
+  /** Samples the gauges now: (anomaly m, depth m) per gauge. */
+  async readGauges(): Promise<Float32Array> {
+    this.gaugePass[this.cur]()
+    return this.exec.read(this.gaugeField)
   }
 
   /** Current diagnostics (max anomaly, arrival s or −1, max inundation, ·) per texel. */

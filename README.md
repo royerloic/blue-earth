@@ -15,3 +15,18 @@ node tools/shot.mjs <url> out.png    # headless WebGPU screenshot
 ```
 
 Placeholder imagery: NASA Blue Marble Next Generation (Reto Stöckli, NASA Earth Observatory).
+
+## Controls (globe)
+| Input | Action |
+|---|---|
+| drag / wheel | orbit / zoom |
+| click | drop a wave · **hold** = oscillating source |
+| Shift+move | steer the sun (glint under the cursor); **R** = real sun |
+| K | Classic controls (pointer = sun, right-drag = orbit) |
+| G | tide gauge at the cursor |
+| L | copy a shareable link · **I** about & credits |
+| H | hide the panel · **Space** fullscreen · **C** Classic 2004 |
+
+URL options: `preset=sumatra2004|tohoku2011|valdivia1960|alaska1964|maule2010|cascadia|asteroid`,
+`S=<sea level m>`, `date=<ISO>`, `lat/lon/alt`, `warp`, `overlay=1|2`, `intro=0`, `kiosk=1`, `hud=0`,
+`tier=low|medium`, `backend=webgl2`.

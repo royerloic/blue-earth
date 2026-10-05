@@ -15,6 +15,8 @@ export interface TsunamiPreset {
   note: string
   view: { lat: number; lon: number; alt: number }
   segments?: FaultSegment[]
+  /** Coastal tide gauges to place (name → [lat, lon]). */
+  gauges?: Record<string, [number, number]>
   /** Toy sources: a Gaussian η change instead of a fault. */
   impulse?: { lat: number; lon: number; amplitude: number; radiusCells: number }
 }
@@ -40,6 +42,7 @@ export const PRESETS: TsunamiPreset[] = [
     magnitude: 'Mw 9.1',
     note: '~1300 km rupture along the Sunda and Andaman trenches; waves reached Sri Lanka in ~2 h and Somalia in ~7 h.',
     view: { lat: 6, lon: 88, alt: 9000 },
+    gauges: { 'Sri Lanka': [7.7, 82.0], Phuket: [7.9, 98.2], Chennai: [13.1, 80.4], Malé: [4.2, 73.6], Somalia: [10.4, 51.6] },
     segments: [
       seg(3.3, 94.2, 325, 12, 250, 150, 15),
       seg(5.6, 93.0, 335, 12, 250, 150, 15),
@@ -55,6 +58,7 @@ export const PRESETS: TsunamiPreset[] = [
     magnitude: 'Mw 9.0',
     note: 'Very large slip near the Japan trench; the tsunami crossed the Pacific to Hawaii (~7–8 h) and Chile (~21–22 h).',
     view: { lat: 30, lon: 175, alt: 16000 },
+    gauges: { Honolulu: [21.2, -157.9], 'Crescent City': [41.7, -124.3], Talcahuano: [-36.6, -73.2], Kushiro: [42.9, 144.4] },
     segments: [seg(38.3, 143.8, 200, 10, 200, 80, 35, 1), seg(38.54, 142.95, 200, 15, 400, 120, 8, 14.9)],
   },
   {
@@ -64,6 +68,7 @@ export const PRESETS: TsunamiPreset[] = [
     magnitude: 'Mw 9.5',
     note: 'The largest earthquake ever recorded; the tsunami struck Hilo (~15 h) and Japan (~22 h).',
     view: { lat: -20, lon: -110, alt: 18000 },
+    gauges: { Hilo: [19.8, -155.0], 'Japan (Ofunato)': [39.0, 141.8], 'Valparaíso': [-33.0, -71.7] },
     segments: [seg(-39.5, -74.3, 7, 20, 500, 180, 25), seg(-43.9, -75.0, 7, 20, 450, 180, 20)],
   },
   {
@@ -82,6 +87,7 @@ export const PRESETS: TsunamiPreset[] = [
     magnitude: 'Mw 8.8',
     note: 'Central Chile megathrust; the Pacific-wide tsunami was well recorded by DART buoys.',
     view: { lat: -30, lon: -95, alt: 12000 },
+    gauges: { Talcahuano: [-36.6, -73.2], Hilo: [19.8, -155.0], 'Easter Island': [-27.1, -109.4] },
     segments: [seg(-35.9, -73.9, 18, 18, 500, 150, 10)],
   },
   {
@@ -91,6 +97,7 @@ export const PRESETS: TsunamiPreset[] = [
     magnitude: 'Mw ~9 (scenario)',
     note: 'A full-margin rupture like the one of January 1700, whose "orphan tsunami" reached Japan.',
     view: { lat: 42, lon: -140, alt: 12000 },
+    gauges: { Seattle: [47.6, -122.5], 'Crescent City': [41.7, -124.3], Hilo: [19.8, -155.0] },
     segments: [seg(42.5, -124.9, 355, 10, 500, 90, 18), seg(46.8, -125.3, 355, 10, 500, 90, 18)],
   },
   {

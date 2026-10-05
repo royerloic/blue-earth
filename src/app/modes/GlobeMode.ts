@@ -11,6 +11,7 @@ import { createGlobeMaterial, GlobeUniforms } from '../../render/globe/globeMate
 import { Hud } from '../../ui/hud'
 import { OceanSim } from '../../sim/OceanSim'
 import { PRESETS } from '../../sim/presets/historical'
+import { GaugePanel, toast } from '../../ui/gauges'
 
 type Scheme = 'explorer' | 'classic'
 
@@ -82,6 +83,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       const { lat, lon } = toLatLon(p)
       posText.textContent = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'}  ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'}`
     }
+    if (p) lastHit = p.clone()
     if (p && (scheme === 'classic' ? e.buttons === 0 : e.shiftKey)) {
       sunForGlintAt(p, camera.position, manualTarget)
       if (sunMode === 'real') manualSun.copy(celestial.sun)
@@ -90,24 +92,42 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     }
   })
   // Click (no drag) drops a wave where the pointer hits the globe.
-  let down: { x: number; y: number; t: number } | null = null
+  // Holding still (> 0.5 s) instead makes an oscillating source, like the 2004 original.
+  let down: { x: number; y: number; t: number; p: THREE.Vector3 | null; moved: boolean } | null = null
+  let lastHit: THREE.Vector3 | null = null
   el.addEventListener('pointerdown', (e) => {
-    if (e.button === 0) down = { x: e.clientX, y: e.clientY, t: performance.now() }
+    if (e.button === 0) down = { x: e.clientX, y: e.clientY, t: performance.now(), p: pickGlobe(camera, el, e.clientX, e.clientY, new THREE.Vector3()), moved: false }
   })
-  el.addEventListener('pointerup', (e) => {
+  el.addEventListener('pointermove', (e) => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= 5) down.moved = true
+  })
+  addEventListener('pointerup', (e) => {
     if (!down || e.button !== 0) return
-    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y)
-    if (moved < 5 && performance.now() - down.t < 500) {
-      const p = pickGlobe(camera, el, e.clientX, e.clientY, new THREE.Vector3())
-      if (p) sim.drop(p, waveAmplitude)
-    }
+    if (!down.moved && performance.now() - down.t < 500 && down.p) sim.drop(down.p, waveAmplitude)
     down = null
   })
+  const oscillating = () => down !== null && !down.moved && down.p !== null && performance.now() - down.t > 500
   addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase()
     if (k === 'k') {
       scheme = scheme === 'classic' ? 'explorer' : 'classic'
       applyScheme()
+    } else if (k === 'g' && lastHit) {
+      if (addGauge(`Gauge ${gauges.gauges.length + 1}`, lastHit) < 0) toast('At most 8 gauges')
+    } else if (k === 'l') {
+      const { lat, lon } = toLatLon(camera.position)
+      const u = new URL(location.origin + location.pathname)
+      u.search = new URLSearchParams({
+        lat: lat.toFixed(2),
+        lon: lon.toFixed(2),
+        alt: ((camera.position.length() - EARTH_RADIUS) / 1000).toFixed(0),
+        S: String(uniforms.seaLevel.value),
+        date: date.toISOString().slice(0, 16) + 'Z',
+        intro: '0',
+      }).toString()
+      void navigator.clipboard?.writeText(u.toString()).then(() => toast('Link copied'), () => toast(u.toString()))
+    } else if (k === 'i') {
+      showAbout(data.credits)
     } else if (k === 'h') {
       hud.root.style.display = hud.root.style.display === 'none' ? '' : 'none'
     } else if (k === 'r') {
@@ -118,12 +138,14 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
 
   // --- HUD -----------------------------------------------------------------------------
   const hud = new Hud('Blue Earth')
+  const gaugesRef: { current?: GaugePanel } = {}
   const sea = hud.slider('Sea level', -130, 80, 1, uniforms.seaLevel.value, (v) => `${v > 0 ? '+' : ''}${v} m`, (v) => (uniforms.seaLevel.value = v))
   sea.input.addEventListener('change', () => sim.setSeaLevel(uniforms.seaLevel.value))
   const setSea = (v: number) => {
     uniforms.seaLevel.value = v
     sea.set(v)
     sim.setSeaLevel(v)
+    gaugesRef.current?.resetSamples()
   }
   // Sea-level presets (approximate; IPCC AR6): LGM ≈ −120 m (20 kyr ago), Greenland ≈ +7.4 m,
   // all ice ≈ +70 m (here without isostatic rebound).
@@ -146,9 +168,16 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     { text: 'Waves', onClick: () => (uniforms.overlay.value = 0) },
     { text: 'Max height', title: 'Maximum wave height so far (log scale 5 cm – 20 m)', onClick: () => (uniforms.overlay.value = 1) },
     { text: 'Arrival', title: 'Wave arrival time, hourly isochrones', onClick: () => (uniforms.overlay.value = 2) },
-    { text: 'Calm sea', title: 'Reset the ocean to rest', onClick: () => sim.calm() },
+    { text: 'Calm sea', title: 'Reset the ocean to rest', onClick: () => (sim.calm(), gauges.resetSamples()) },
   ])
   if (q.has('overlay')) uniforms.overlay.value = Number(q.get('overlay'))
+  const gauges = new GaugePanel()
+  gaugesRef.current = gauges
+  const addGauge = (name: string, pos: THREE.Vector3) => {
+    const k = gauges.add(name, pos)
+    if (k >= 0) sim.solver.setGauge(k, sim.cellAt(pos, true))
+    return k
+  }
   const eventText = document.createElement('div')
   eventText.className = 'be-hud-note'
   const runPreset = (id: string) => {
@@ -166,6 +195,9 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       const r = sim.applyFault(p.segments)
       info = ` · seafloor +${r.maxUp.toFixed(1)} / ${r.maxDown.toFixed(1)} m`
     } else if (p.impulse) sim.drop(fromLatLon(p.impulse.lat, p.impulse.lon, 1), p.impulse.amplitude, p.impulse.radiusCells)
+    gauges.clear()
+    for (let k = 0; k < 8; k++) sim.solver.setGauge(k, -1)
+    for (const [name, [la, lo]] of Object.entries(p.gauges ?? {})) addGauge(name, fromLatLon(la, lo, 1))
     eventText.innerHTML = `<b>${p.name}</b> · ${p.magnitude}${info}<br>${p.note}<br><i>Simplified source model.</i>`
   }
   hud.select('Tsunami', [{ value: '', text: 'Historical event…' }, ...PRESETS.map((p) => ({ value: p.id, text: `${p.name} (${p.magnitude})` }))], runPreset)
@@ -178,7 +210,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     t.setUTCHours(date.getUTCHours(), date.getUTCMinutes())
     date = t
   }
-  const daySlider = hud.slider('Day', 0, 364, 1, dayOfYear(date), (v) => new Date(Date.UTC(2026, 0, 1 + v)).toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' }), setDay)
+  const daySlider = hud.slider('Day', 0, 364, 1, dayOfYear(date), (v) => new Date(Date.UTC(date.getUTCFullYear(), 0, 1 + v)).toLocaleDateString('en', { month: 'short', day: 'numeric', year: date.getUTCFullYear() === new Date().getUTCFullYear() ? undefined : 'numeric', timeZone: 'UTC' }), setDay)
   const hourSlider = hud.slider('Time (UTC)', 0, 23.99, 0.05, date.getUTCHours() + date.getUTCMinutes() / 60, (v) => `${String(Math.floor(v)).padStart(2, '0')}:${String(Math.floor((v % 1) * 60)).padStart(2, '0')}`, (v) => {
     date = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) + v * 3_600_000)
   })
@@ -190,7 +222,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const posText = hud.text('Cursor')
   const schemeText = hud.text('Controls')
   if (q.get('hud') === '0') hud.root.style.display = 'none'
-  hud.note(`Click: drop a wave · Space: fullscreen · H: hide panel · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
+  hud.note(`Click: drop a wave (hold: oscillate) · G: tide gauge at cursor · L: copy link · I: about · Space: fullscreen · H: hide panel · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
   applyScheme()
 
   addEventListener('resize', () => {
@@ -225,6 +257,35 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   } else title.remove()
   if (q.has('preset')) runPreset(q.get('preset')!)
 
+  // --- Screensaver / kiosk: after 90 s without input (or ?kiosk=1): slow orbit, time-lapse
+  // sun, a random wave now and then. Any input ends it.
+  let lastInput = performance.now()
+  let kiosk = false
+  let kioskDrop = 0
+  let savedLapse = 0
+  const setKiosk = (on: boolean) => {
+    if (on === kiosk) return
+    kiosk = on
+    controls.autoRotate = on
+    controls.autoRotateSpeed = 0.35
+    if (on) {
+      savedLapse = timeLapse
+      timeLapse = 0.5
+      hud.root.style.opacity = '0.35'
+    } else {
+      timeLapse = savedLapse
+      hud.root.style.opacity = ''
+    }
+  }
+  for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel'] as const)
+    addEventListener(ev, () => {
+      lastInput = performance.now()
+      if (q.get('kiosk') !== '1') setKiosk(false)
+    })
+  if (q.get('kiosk') === '1') setKiosk(true)
+  let gaugeBusy = false
+  let gaugeT = -1
+
   let last = performance.now()
   renderer.setAnimationLoop(() => {
     const now = performance.now()
@@ -254,7 +315,30 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       celestial.sun.copy(manualSun)
     }
     atmosphere.setCelestial(celestial.sun, celestial.moon, celestial.eciToEcef)
-    sim.advance(dt, warp)
+    if (!kiosk && introT === Infinity && now - lastInput > 90_000) setKiosk(true)
+    if (kiosk && (kioskDrop -= dt) <= 0) {
+      kioskDrop = 25
+      sim.drop(sim.randomOceanPoint(), 30)
+    }
+    const steps = sim.advance(dt, warp)
+    if (oscillating() && steps > 0) {
+      // Source η = A·sin(2πt/T): add its increment over this frame's simulated time.
+      const T = 600
+      const tNow = sim.solver.time
+      const tPrev = tNow - steps * sim.dt
+      const a = (waveAmplitude / 4) * (Math.sin((2 * Math.PI * tNow) / T) - Math.sin((2 * Math.PI * tPrev) / T))
+      sim.drop(down!.p!, a, 2)
+    }
+    if (gauges.gauges.length && !gaugeBusy && sim.solver.clock.value - gaugeT >= Math.max(30, sim.dt)) {
+      gaugeBusy = true
+      const t = sim.solver.clock.value
+      void sim.solver.readGauges().then((v) => {
+        gauges.record(t, v)
+        gaugeT = t
+        gaugeBusy = false
+      })
+    }
+    gauges.update(camera, el)
     const h = sim.solver.time / 3600
     simText.textContent = `${Math.floor(h)} h ${String(Math.floor((h % 1) * 60)).padStart(2, '0')} min · dt ${sim.dt.toFixed(0)} s`
     uniforms.monthWeights.value.fromArray(monthWeights(date))
@@ -288,4 +372,22 @@ function introTitle(): HTMLDivElement {
   document.head.appendChild(style)
   document.body.appendChild(div)
   return div
+}
+
+/** Credits and a short explanation (I). */
+function showAbout(credits: string[]) {
+  const div = document.createElement('div')
+  div.style.cssText =
+    'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000a;z-index:20;font:13px/1.55 system-ui,sans-serif;color:#dbe6ff'
+  div.innerHTML = `<div style="max-width:560px;padding:22px 26px;border-radius:12px;background:#0b1226f0;border:1px solid #8aa6ff33">
+    <div style="font:italic 600 26px system-ui;color:#6f8dff;margin-bottom:6px">Blue Earth</div>
+    <p>A web remake of Loic Royer's 2004 Java demo. Real shallow-water physics runs on the GPU over real
+    bathymetry: waves travel at √(g·depth), reflect off coasts and flood low land. The sea level can go from
+    Ice Age to an ice-free world. Historical tsunamis use simplified Okada fault sources.</p>
+    <p style="opacity:.85"><b>Data:</b> ${credits.join(' · ')}</p>
+    <p style="opacity:.85"><b>Software:</b> three.js (MIT) · @takram/three-atmosphere (MIT, Bruneton/Hillaire scattering)</p>
+    <p style="opacity:.6">Vertical scales are exaggerated. Simplified physics and sources, not for hazard assessment.</p>
+    <p style="opacity:.6">Click anywhere to close.</p></div>`
+  div.addEventListener('click', () => div.remove())
+  document.body.appendChild(div)
 }
