@@ -48,7 +48,7 @@ for (const backend of ['webgpu', 'webgl2']) {
     test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
-    await page.goto(`/?backend=${backend}&date=2026-07-09T11:00:00Z`)
+    await page.goto(`/?backend=${backend}&date=2026-07-09T11:00:00Z&intro=0`)
     await expect(page.locator('.be-hud')).toContainText(backend)
     await page.waitForTimeout(2500)
     const shot = await page.locator('canvas').screenshot()
@@ -60,7 +60,7 @@ for (const backend of ['webgpu', 'webgl2']) {
 test('clicking the ocean drops a wave that changes the picture', async ({ page }) => {
   test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
   test.setTimeout(90_000)
-  await page.goto('/?date=2026-07-09T23:00:00Z&lat=5&lon=-160&alt=9000&clouds=0&warp=1200&hud=0')
+  await page.goto('/?date=2026-07-09T23:00:00Z&lat=5&lon=-160&alt=9000&clouds=0&warp=1200&hud=0&intro=0')
   await expect(page.locator('.be-hud')).toBeAttached()
   await page.waitForTimeout(2500)
   const box = await page.locator('canvas').boundingBox()

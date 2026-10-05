@@ -119,6 +119,19 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const hud = new Hud('Blue Earth')
   const sea = hud.slider('Sea level', -130, 80, 1, uniforms.seaLevel.value, (v) => `${v > 0 ? '+' : ''}${v} m`, (v) => (uniforms.seaLevel.value = v))
   sea.input.addEventListener('change', () => sim.setSeaLevel(uniforms.seaLevel.value))
+  const setSea = (v: number) => {
+    uniforms.seaLevel.value = v
+    sea.set(v)
+    sim.setSeaLevel(v)
+  }
+  // Sea-level presets (approximate; IPCC AR6): LGM ≈ −120 m (20 kyr ago), Greenland ≈ +7.4 m,
+  // all ice ≈ +70 m (here without isostatic rebound).
+  hud.buttons('Presets', [
+    { text: 'Ice age −120', title: 'Last Glacial Maximum, ~20,000 years ago', onClick: () => setSea(-120) },
+    { text: 'Today', onClick: () => setSea(0) },
+    { text: 'Greenland +7', title: 'Greenland ice sheet melted', onClick: () => setSea(7) },
+    { text: 'All ice +70', title: 'All land ice melted (no isostatic rebound)', onClick: () => setSea(70) },
+  ])
   let warp = Number(q.get('warp') ?? 600)
   let waveAmplitude = Number(q.get('drop') ?? 20)
   hud.slider('Sim speed', 0, 3000, 50, warp, (v) => (v ? `×${v}` : 'paused'), (v) => (warp = v))
@@ -157,11 +170,48 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     renderer.setSize(innerWidth, innerHeight)
   })
 
+  // --- Intro (the 2004 opening): the world starts flooded and the sea drains away while the
+  // camera dollies in. Any click or key skips it.
+  const INTRO = 7
+  // +2000 m drowns everything but the highest plateaus and the ice sheets, like the 2004 opening.
+  const S_START = 2000
+  const targetSea = uniforms.seaLevel.value
+  const startDist = camera.position.length() * 2.2
+  const endDist = camera.position.length()
+  let introT = q.get('intro') === '0' ? Infinity : 0
+  const title = introTitle()
+  const finishIntro = () => {
+    if (introT === Infinity) return
+    introT = Infinity
+    camera.position.setLength(endDist)
+    setSea(targetSea)
+    title.classList.add('out')
+    setTimeout(() => title.remove(), 2500)
+  }
+  if (introT === 0) {
+    camera.position.setLength(startDist)
+    setSea(S_START)
+    el.addEventListener('pointerdown', finishIntro, { once: true })
+    addEventListener('keydown', finishIntro, { once: true })
+  } else title.remove()
+
   let last = performance.now()
   renderer.setAnimationLoop(() => {
     const now = performance.now()
     const dt = Math.min((now - last) / 1000, 0.1)
     last = now
+    if (introT < INTRO) {
+      introT += dt
+      const e = Math.min(1, introT / INTRO)
+      const S = targetSea + (S_START - targetSea) * (1 - e) ** 3
+      uniforms.seaLevel.value = S
+      sea.set(Math.round(S))
+      sim.setSeaLevel(S)
+      const k = 1 - (1 - e) ** 2
+      camera.position.setLength(startDist + (endDist - startDist) * k)
+      if (introT > INTRO * 0.7) title.classList.add('out')
+      if (introT >= INTRO) finishIntro()
+    }
     if (timeLapse > 0) {
       date = new Date(date.getTime() + timeLapse * 3_600_000 * dt)
       hourSlider.set(date.getUTCHours() + date.getUTCMinutes() / 60)
@@ -188,4 +238,24 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     controls.update()
     atmosphere.render()
   })
+}
+
+/** "Blue Earth" title for the intro, a nod to the 2004 original. */
+function introTitle(): HTMLDivElement {
+  const div = document.createElement('div')
+  div.className = 'be-intro'
+  div.innerHTML = `<div class="be-intro-title">Blue Earth</div>
+    <div class="be-intro-sub">Designed and coded by Loic Royer in 100% pure Java, 2004 · Reimagined for the web, 2026</div>`
+  const style = document.createElement('style')
+  style.textContent = `
+  .be-intro { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding-top: 9vh; pointer-events: none; animation: be-in 1.6s ease-out backwards; transition: opacity 1.8s ease-in; }
+  .be-intro.out { opacity: 0; }
+  .be-intro-title { font: italic 600 min(12vw, 120px)/1 system-ui, -apple-system, "Helvetica Neue", sans-serif; letter-spacing: .02em;
+    color: #3d5dff; text-shadow: 0.06em 0.03em 0 rgba(20, 30, 120, 0.8), 0 0 40px rgba(80, 120, 255, 0.35); }
+  .be-intro-sub { margin-top: 1.2em; font: italic 15px system-ui, sans-serif; color: rgba(220, 230, 255, 0.85); }
+  @keyframes be-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }`
+  document.head.appendChild(style)
+  document.body.appendChild(div)
+  return div
 }

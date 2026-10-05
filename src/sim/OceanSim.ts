@@ -62,7 +62,8 @@ export class OceanSim {
     this.dt = stableDt(this.grid, -deepest)
     this.exec = backend === 'webgpu' ? new ComputeExecutor(renderer) : new RTTExecutor(renderer)
     this.seaLevel = seaLevel
-    this.solver = new SWESolver(this.exec, this.grid, this.B, this.initialEta(seaLevel), DEFAULT_PARAMS)
+    this.solver = new SWESolver(this.exec, this.grid, this.B, this.initialEta(seaLevel), DEFAULT_PARAMS, this.F)
+    this.solver.seaLevel.value = seaLevel
     this.solver.dt.value = this.dt
     const N = this.N
     const M = N + 2
@@ -90,9 +91,12 @@ export class OceanSim {
       const src = select(isGutter, across, edge as any) as unknown as Node
       const s = u(src) as any
       const b = bed(src) as any
+      // Still-water level for the current sea level (same rule as setSeaLevel).
+      const S = this.solver.seaLevel as any
+      const rest = select(b.y.lessThanEqual(S), max(S, b.x), b.x)
       const h = max(s.x.sub(b.x), float(0)) as any
       const speed = select(h.greaterThan(0.01), vec3(s.y, s.z, s.w).length().div(max(h, 0.01)), float(0))
-      return vec4(s.x.sub(b.y), h, s.x, speed) as unknown as Node
+      return vec4(s.x.sub(rest), h, s.x, speed) as unknown as Node
     }, this.display)
     this.updateDisplay()
   }
@@ -107,9 +111,10 @@ export class OceanSim {
     return eta
   }
 
+  /** Instant sea level (GPU): the ocean at rest at S. Cheap enough to animate every frame. */
   setSeaLevel(S: number) {
     this.seaLevel = S
-    this.solver.reset(this.initialEta(S))
+    this.solver.setSeaLevel(S)
     this.debt = 0
     this.updateDisplay()
   }

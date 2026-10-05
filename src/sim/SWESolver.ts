@@ -13,7 +13,7 @@ import { DEFAULT_PARAMS, type SWEParams } from './swe'
  *   nb   = 4 neighbour texels packed as x + 4096·y (exact in f32)
  *   cell = (centre xyz, back dirs packed b0 + 4b1 + 16b2 + 64b3)
  *   g0–3 = (edge normal xyz, ℓ/A) per edge k
- *   bed  = (B, η_rest, 0, 0)   η_rest = the still-water level, for displaying wave anomalies
+ *   bed  = (B, F, 0, 0)   F = flood level (lowest sea level connecting the cell to the ocean)
  * Three state fields rotate: stage 1 writes U1, stage 2 reads U1 and Uⁿ and writes Uⁿ⁺¹
  * (render-to-texture cannot read and write the same target).
  */
@@ -48,6 +48,9 @@ export class SWESolver {
   private readonly stage1: (() => void)[] = []
   private readonly stage2: (() => void)[] = []
   private readonly impulse: (() => void)[] = []
+  private readonly seaPass: (() => void)[] = []
+  readonly seaLevel = uniform(0)
+  private readonly p: SWEParams
   private cur = 0
   private pending: Impulse[] = []
   time = 0
@@ -57,8 +60,11 @@ export class SWESolver {
     grid: CubeGrid,
     bed: Float32Array | Float64Array,
     initialEta: Float32Array | Float64Array,
-    private readonly p: SWEParams = DEFAULT_PARAMS,
+    params: SWEParams = DEFAULT_PARAMS,
+    /** Flood level per cell (enables setSeaLevel); defaults to B (everything connected). */
+    floodLevel?: Float32Array | Float64Array,
   ) {
+    const p = (this.p = params)
     const N = (this.N = grid.N)
     this.width = 3 * N
     this.height = 2 * N
@@ -89,19 +95,24 @@ export class SWESolver {
       cell.set(grid.center.subarray(c * 3, c * 3 + 3), o)
       cell[o + 3] = backs
       bedT[o] = bed[c]
+      bedT[o + 1] = floodLevel ? floodLevel[c] : bed[c]
       init[o] = initialEta[c]
     }
     const st = (d: Float32Array) => exec.createStatic(W, H, d)
     this.statics = { nb: st(nb), cell: st(cell), g0: st(gk[0]), g1: st(gk[1]), g2: st(gk[2]), g3: st(gk[3]), bed: st(bedT) }
     this.states = [exec.createField(W, H), exec.createField(W, H), exec.createField(W, H)]
     exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
-    this.setRest(initialEta)
     this.manning.value = p.manning
     this.coriolis.value = p.coriolis ? 1 : 0
 
     const k1 = this.stageKernel(1)
     const k2 = this.stageKernel(2)
     const ki = this.impulseKernel()
+    const ks: Kernel<In> = ({ bed }, q) => {
+      const b = bed(q) as any
+      const S = this.seaLevel as any
+      return vec4(select(b.y.lessThanEqual(S), max(S, b.x), b.x), 0, 0, 0) as unknown as Node
+    }
     for (let r = 0; r < 3; r++) {
       const A = this.states[r]
       const B = this.states[(r + 1) % 3]
@@ -109,6 +120,7 @@ export class SWESolver {
       this.stage1.push(exec.pass(k1, { u: A, base: A, ...this.statics }, B))
       this.stage2.push(exec.pass(k2, { u: B, base: A, ...this.statics }, C))
       this.impulse.push(exec.pass(ki, { u: A, base: A, ...this.statics }, B))
+      this.seaPass.push(exec.pass(ks, { u: A, base: A, ...this.statics }, B))
     }
   }
 
@@ -121,7 +133,6 @@ export class SWESolver {
   reset(eta: Float32Array | Float64Array) {
     const init = new Float32Array(this.width * this.height * 4)
     for (let c = 0; c < eta.length; c++) init[this.texelOf(c)] = eta[c]
-    this.setRest(eta)
     const f = this.exec.createStatic(this.width, this.height, init)
     this.exec.pass<'src'>(({ src }, q) => src(q), { src: f }, this.states[this.cur])()
     ;(f as unknown as { texture: { dispose(): void } }).texture.dispose()
@@ -137,12 +148,15 @@ export class SWESolver {
     return () => passes[this.cur]()
   }
 
-  /** Stores the still-water level per cell in bed.y (used by display views). */
-  setRest(eta: Float32Array | Float64Array) {
-    const tex = (this.statics.bed as unknown as { texture: THREE.DataTexture }).texture
-    const data = tex.image.data as Float32Array
-    for (let c = 0; c < eta.length; c++) data[this.texelOf(c) + 1] = eta[c]
-    tex.needsUpdate = true
+  /**
+   * Instant sea level S: the ocean (F ≤ S) at rest at S, everything else dry. Runs on the GPU,
+   * so it can be animated every frame (the intro drains the sea from +500 m).
+   */
+  setSeaLevel(S: number) {
+    this.seaLevel.value = S
+    this.seaPass[this.cur]()
+    this.cur = (this.cur + 1) % 3
+    this.pending = []
   }
 
   addImpulse(i: Impulse) {

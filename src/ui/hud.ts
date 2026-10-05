@@ -45,6 +45,24 @@ export class Hud {
     return input
   }
 
+  buttons(label: string, items: { text: string; title?: string; onClick: () => void }[]) {
+    const row = this.row(label)
+    const wrap = document.createElement('span')
+    wrap.className = 'be-hud-buttons'
+    for (const it of items) {
+      const b = document.createElement('button')
+      b.textContent = it.text
+      if (it.title) b.title = it.title
+      b.addEventListener('click', (e) => {
+        e.preventDefault()
+        it.onClick()
+      })
+      wrap.appendChild(b)
+    }
+    row.append(wrap)
+    return wrap
+  }
+
   text(label: string) {
     const row = this.row(label)
     const span = document.createElement('span')
@@ -85,6 +103,10 @@ function injectStyle() {
   .be-hud-row input[type=range] { flex: 1; accent-color: #6f8dff; }
   .be-hud-val { width: 96px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .be-hud-text { font-variant-numeric: tabular-nums; }
-  .be-hud-note { opacity: .55; margin-top: 6px; font-size: 11px; }`
+  .be-hud-note { opacity: .55; margin-top: 6px; font-size: 11px; }
+  .be-hud-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+  .be-hud-buttons button { font: inherit; font-size: 11px; color: #cfdcff; background: rgba(111, 141, 255, 0.14);
+    border: 1px solid rgba(140, 170, 255, 0.25); border-radius: 5px; padding: 1px 7px; cursor: pointer; }
+  .be-hud-buttons button:hover { background: rgba(111, 141, 255, 0.3); }`
   document.head.appendChild(s)
 }
