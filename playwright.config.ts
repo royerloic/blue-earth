@@ -11,15 +11,20 @@ const args = linuxGpu
     ? ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader']
     : ['--enable-unsafe-webgpu', '--use-angle=metal', '--ignore-gpu-blocklist']
 
+// PREVIEW=1: test the production build (vite preview of dist/) instead of the dev server.
+const preview = !!process.env.PREVIEW
+
 export default defineConfig({
   testDir: 'tests/gpu',
   timeout: ci ? 180_000 : 90_000,
   workers: 1,
   use: {
-    baseURL: 'http://localhost:5174',
+    baseURL: preview ? 'http://localhost:5175' : 'http://localhost:5174',
     channel: ci || linuxGpu ? undefined : 'chrome',
     launchOptions: { args },
     viewport: { width: 1280, height: 800 },
   },
-  webServer: { command: 'npx vite --port 5174 --strictPort', port: 5174, reuseExistingServer: !ci },
+  webServer: preview
+    ? { command: 'npx vite build && npx vite preview --port 5175 --strictPort', port: 5175, reuseExistingServer: false, timeout: 120_000 }
+    : { command: 'npx vite --port 5174 --strictPort', port: 5174, reuseExistingServer: !ci },
 })

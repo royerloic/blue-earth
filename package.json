@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:gpu": "playwright test"
+    "test:gpu": "playwright test",
+    "test:prod": "PREVIEW=1 playwright test -g \"globe renders|Classic mode|clicking the ocean|progressive|preset places|visual\""
   },
   "dependencies": {
     "@takram/three-atmosphere": "0.19.1",

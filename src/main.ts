@@ -1,5 +1,3 @@
-import { startClassicMode } from './app/modes/ClassicMode'
-import { startGlobeMode } from './app/modes/GlobeMode'
 import { createRenderer } from './core/renderer'
 
 /** Switches mode by URL (?mode=classic), so every mode is linkable and starts clean. */
@@ -26,11 +24,14 @@ async function main() {
   const mode = new URLSearchParams(location.search).get('mode')
   if (mode === 'classic') {
     addEventListener('keydown', (e) => e.key.toLowerCase() === 'c' && gotoMode('globe'))
+    // Modes are separate chunks: Classic doesn't need the atmosphere or the ocean solver.
+    const { startClassicMode } = await import('./app/modes/ClassicMode')
     await startClassicMode(info, () => gotoMode('globe'))
   }
   else {
     addEventListener('keydown', (e) => e.key.toLowerCase() === 'c' && gotoMode('classic'))
     try {
+      const { startGlobeMode } = await import('./app/modes/GlobeMode')
       await startGlobeMode(info)
     } catch (e) {
       console.error(e)
