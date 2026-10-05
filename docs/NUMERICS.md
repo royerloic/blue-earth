@@ -28,6 +28,14 @@ the tendency is projected onto the tangent plane every stage.
    pressure gradient and made waves 1/√3 too slow; caught by the wave-speed test.)
 6. **Coriolis:** −2Ω×m.
 
+## Float32 (GPU) details
+- The face level is η* = η_rec exactly (algebraically h* + B_f,side). Computing the sum instead
+  rounds and breaks the rest state.
+- Pressures enter HLL relative to the cell-centre reference, written in differences:
+  ½g[(e−e_r)(e+e_r) − 2((e−e_r)·b + e_r·(b−b_r))]. This is exactly 0 at rest regardless of FMA
+  contraction. Subtracting two separately rounded pressures left |m| ≈ 1e-3 m²/s.
+- Mass flux: both cells compute the same HLL call with the lower texel index as left, then negate.
+
 ## Time stepping and source terms
 SSP-RK2 (Heun). After each stage: η ≥ B, m = 0 in dry cells (h < 1 mm), tangent projection,
 |u| ≤ 30 m/s. After the step: semi-implicit Manning friction (n = 0.025).

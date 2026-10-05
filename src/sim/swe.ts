@@ -39,12 +39,19 @@ interface Side {
   uz: number
 }
 
-/** HLL flux across a face with unit normal n from side L to side R: [mass, mx, my, mz]. */
-export function hll(L: Side, R: Side, nx: number, ny: number, nz: number, p: SWEParams, out: Float64Array) {
+/**
+ * HLL flux across a face with unit normal n from side L to side R: [mass, mx, my, mz].
+ * Pressures are taken relative to the reference state (er, br), written in differences
+ * (HLL is affine in F, so this returns F − p(er, br)·n). With the cell-centre η and face bed
+ * as reference this is the well-balanced bed source, and the rest state cancels exactly
+ * even in float32 (the GPU kernel uses the same form).
+ */
+export function hll(L: Side, R: Side, nx: number, ny: number, nz: number, p: SWEParams, out: Float64Array, er = 0, br = 0) {
   const unL = L.ux * nx + L.uy * ny + L.uz * nz
   const unR = R.ux * nx + R.uy * ny + R.uz * nz
-  const pL = 0.5 * p.g * (L.eta * L.eta - 2 * L.eta * L.bf)
-  const pR = 0.5 * p.g * (R.eta * R.eta - 2 * R.eta * R.bf)
+  const pRel = (e: number, b: number) => 0.5 * p.g * ((e - er) * (e + er) - 2 * ((e - er) * b + er * (b - br)))
+  const pL = pRel(L.eta, L.bf)
+  const pR = pRel(R.eta, R.bf)
   if (L.h < p.hDry && R.h < p.hDry) {
     out[0] = 0
     out[1] = pL * nx
@@ -143,9 +150,7 @@ export function rhs(g: CubeGrid, B: Float64Array, eta: Float64Array, m: Float64A
       // Momentum: own perspective. Subtracting the cell-centre pressure (with the face bed)
       // is the well-balanced bed source: it cancels the flux exactly for a lake at rest,
       // while F − p_c ≈ g·h·(η_face − η_c) gives the pressure gradient.
-      hll(sides.c, sides.o, nx, ny, nz, p, flux)
-      const ec = eta[c]
-      const pc = 0.5 * p.g * (ec * ec - 2 * ec * sides.c.bf)
+      hll(sides.c, sides.o, nx, ny, nz, p, flux, eta[c], sides.c.bf)
       // Mass: canonical orientation (lower id = left) so both cells get identical fluxes.
       let mass: number
       if (c < o) mass = flux[0]
@@ -155,9 +160,9 @@ export function rhs(g: CubeGrid, B: Float64Array, eta: Float64Array, m: Float64A
       }
       const la = g.lenOverArea[e]
       ae -= la * mass
-      ax -= la * (flux[1] - pc * nx)
-      ay -= la * (flux[2] - pc * ny)
-      az -= la * (flux[3] - pc * nz)
+      ax -= la * flux[1]
+      ay -= la * flux[2]
+      az -= la * flux[3]
     }
     if (p.coriolis) {
       const f2 = 2 * p.omega
@@ -202,9 +207,11 @@ function setSide(s: Side, r: number[], bCell: number, bf: number, p: SWEParams) 
   const hRec = Math.max(0, r[0] - bCell)
   const h = Math.max(0, r[0] - bf)
   // Liang & Marche: where the face bed is above the water, lower it to the water level.
-  s.bf = bf - Math.max(0, bf - r[0])
+  s.bf = Math.min(bf, r[0])
   s.h = h
-  s.eta = h + s.bf
+  // η* = h* + B_f,side is exactly the reconstructed η (wet: η; dry face: B_f,side = η).
+  // Using it directly keeps the rest state bit-exact in float32.
+  s.eta = r[0]
   // Desingularised velocity from the reconstructed momentum and depth.
   const h4 = hRec ** 4
   const inv = hRec > 0 ? (Math.SQRT2 * hRec) / Math.sqrt(h4 + Math.max(h4, p.hEps ** 4)) : 0

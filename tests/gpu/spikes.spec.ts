@@ -63,6 +63,19 @@ test('globe page explains missing data instead of failing silently', async ({ pa
   await expect(page.locator('#hud')).toContainText('Classic 2004')
 })
 
+for (const backend of ['webgpu', 'webgl2']) {
+  test(`shallow-water GPU solver matches the float64 reference; lake at rest exact [${backend}]`, async ({ page }) => {
+    test.setTimeout(240_000)
+    const { data } = await runSpike(page, `spike=swe&backend=${backend}`)
+    for (const r of data) {
+      expect(r.parityMaxDeta, r.executor).toBeLessThan(1e-3)
+      expect(r.parityMaxDmRel, r.executor).toBeLessThan(1e-3)
+      expect(r.lakeMaxM, r.executor).toBe(0)
+      expect(r.lakeMaxDeta, r.executor).toBe(0)
+    }
+  })
+}
+
 test('Classic mode: waves, sea-level strip and right-click exit', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
