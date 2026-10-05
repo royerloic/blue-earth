@@ -132,8 +132,8 @@ export class SWESolver {
    * A pass from the current state (and bed) into a fixed output field, e.g. the display
    * texture the renderer samples. Returns a function that runs it for whichever state is current.
    */
-  view(kernel: Kernel<'u' | 'bed'>, output: Field): () => void {
-    const passes = this.states.map((st) => this.exec.pass(kernel, { u: st, bed: this.statics.bed }, output))
+  view(kernel: Kernel<'u' | 'bed' | 'nb'>, output: Field): () => void {
+    const passes = this.states.map((st) => this.exec.pass(kernel, { u: st, bed: this.statics.bed, nb: this.statics.nb }, output))
     return () => passes[this.cur]()
   }
 

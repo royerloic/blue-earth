@@ -43,6 +43,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   if (q.has('exposure')) atmosphere.exposure.value = Number(q.get('exposure'))
   if (q.has('night')) uniforms.nightIntensity.value = Number(q.get('night'))
   if (q.has('rough')) uniforms.waterRoughness.value = Number(q.get('rough'))
+  if (q.has('wind')) uniforms.setWind(Number(q.get('wind')))
   if (q.has('raymarch')) atmosphere.context.raymarchScattering = q.get('raymarch') !== '0'
   const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(data, uniforms, atmosphere.context.sunDirectionECEF, { texture: sim.displayTexture, n: sim.N }, q.get('debug')))
   globe.frustumCulled = false
@@ -106,6 +107,8 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     if (k === 'k') {
       scheme = scheme === 'classic' ? 'explorer' : 'classic'
       applyScheme()
+    } else if (k === 'h') {
+      hud.root.style.display = hud.root.style.display === 'none' ? '' : 'none'
     } else if (k === 'r') {
       sunMode = 'real'
       sunText.textContent = 'real (date & time)'
@@ -117,13 +120,14 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const sea = hud.slider('Sea level', -130, 80, 1, uniforms.seaLevel.value, (v) => `${v > 0 ? '+' : ''}${v} m`, (v) => (uniforms.seaLevel.value = v))
   sea.input.addEventListener('change', () => sim.setSeaLevel(uniforms.seaLevel.value))
   let warp = Number(q.get('warp') ?? 600)
-  let waveAmplitude = 20
+  let waveAmplitude = Number(q.get('drop') ?? 20)
   hud.slider('Sim speed', 0, 3000, 50, warp, (v) => (v ? `×${v}` : 'paused'), (v) => (warp = v))
   hud.slider('Drop height', 1, 100, 1, waveAmplitude, (v) => `${v} m`, (v) => (waveAmplitude = v))
   hud.slider('Waves', 0, 2, 0.05, uniforms.waveTint.value, (v) => (v ? `highlight ×${v.toFixed(2)}` : 'realistic'), (v) => {
     uniforms.waveTint.value = v
     uniforms.waveNormalGain.value = 4000 * v + 1
   })
+  hud.slider('Wind', 0, 20, 0.5, uniforms.wind, (v) => `${v} m/s`, (v) => uniforms.setWind(v))
   const simText = hud.text('Sim time')
   hud.slider('Relief', 1, 50, 1, uniforms.exaggeration.value, (v) => `×${v}`, (v) => (uniforms.exaggeration.value = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
@@ -143,7 +147,8 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   sunText.textContent = 'real (date & time)'
   const posText = hud.text('Cursor')
   const schemeText = hud.text('Controls')
-  hud.note(`Click: drop a wave · Space: fullscreen · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
+  if (q.get('hud') === '0') hud.root.style.display = 'none'
+  hud.note(`Click: drop a wave · Space: fullscreen · H: hide panel · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
   applyScheme()
 
   addEventListener('resize', () => {

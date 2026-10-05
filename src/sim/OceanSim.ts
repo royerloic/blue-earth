@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu'
-import { float, max, vec4 } from 'three/tsl'
+import { clamp, float, floor, int, ivec2, max, mod, select, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { NO_LAKE, type GlobeData } from '../core/assets/globeData'
 import { EARTH_RADIUS } from '../core/geo/units'
@@ -15,8 +15,10 @@ const PROTECTED_FLOOD = 2
 
 /**
  * The world ocean: real bathymetry (the tier's sim.ktx2), the GPU solver, sea-level
- * initialisation, wave drops and time warp. `display` holds (η − η_rest, h, 0, 0) per cell
- * in the solver's 3×2 face atlas: the wave anomaly is what the renderer exaggerates.
+ * initialisation, wave drops and time warp. `display` holds (η − η_rest, h, η, |u|) per cell
+ * in a 3×2 face atlas with a 1-texel gutter per face side ((N+2)² per face), filled from the
+ * neighbouring faces, so the renderer can filter across cube edges without seams.
+ * The wave anomaly is what the renderer exaggerates.
  */
 export class OceanSim {
   readonly grid: CubeGrid
@@ -62,12 +64,35 @@ export class OceanSim {
     this.seaLevel = seaLevel
     this.solver = new SWESolver(this.exec, this.grid, this.B, this.initialEta(seaLevel), DEFAULT_PARAMS)
     this.solver.dt.value = this.dt
-    this.display = this.exec.createField(this.solver.width, this.solver.height)
+    const N = this.N
+    const M = N + 2
+    this.display = this.exec.createField(3 * M, 2 * M)
     this.displayTexture = this.exec.texture(this.display)
-    this.updateDisplay = this.solver.view(({ u, bed }, q) => {
-      const s = u(q) as any
-      const b = bed(q) as any
-      return vec4(s.x.sub(b.y), max(s.x.sub(b.x), float(0)), 0, 1) as unknown as Node
+    this.updateDisplay = this.solver.view(({ u, bed, nb }, q) => {
+      const X = (q as any).x
+      const Y = (q as any).y
+      const fx = X.div(M)
+      const fy = Y.div(M)
+      const lx = X.sub(fx.mul(M)).sub(1)
+      const ly = Y.sub(fy.mul(M)).sub(1)
+      const cx = clamp(lx, 0, N - 1)
+      const cy = clamp(ly, 0, N - 1)
+      const edge = ivec2(fx.mul(N).add(cx), fy.mul(N).add(cy)) as unknown as Node
+      // Gutter texels read the neighbour across the face edge (−s, +s, −t, +t).
+      const nbs = nb(edge) as any
+      const packed = select(
+        lx.lessThan(0),
+        nbs.y,
+        select(lx.greaterThanEqual(N), nbs.x, select(ly.lessThan(0), nbs.w, nbs.z)),
+      ) as any
+      const isGutter = lx.lessThan(0).or(lx.greaterThanEqual(N)).or(ly.lessThan(0)).or(ly.greaterThanEqual(N))
+      const across = ivec2(int(mod(packed, 4096)), int(floor(packed.div(4096))))
+      const src = select(isGutter, across, edge as any) as unknown as Node
+      const s = u(src) as any
+      const b = bed(src) as any
+      const h = max(s.x.sub(b.x), float(0)) as any
+      const speed = select(h.greaterThan(0.01), vec3(s.y, s.z, s.w).length().div(max(h, 0.01)), float(0))
+      return vec4(s.x.sub(b.y), h, s.x, speed) as unknown as Node
     }, this.display)
     this.updateDisplay()
   }

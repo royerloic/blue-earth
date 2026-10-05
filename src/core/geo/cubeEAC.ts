@@ -99,21 +99,22 @@ export function sampleEACArray(tex: Texture, d: Node, n: number, gutter: number,
 }
 
 /**
- * TSL: bilinear sample of a simulation atlas (faces in a 3×2 layout, n×n cells each, no
- * gutters) at unit direction d, clamped inside the face. Uses textureLoad, so it works for
- * unfilterable float32 textures and in vertex shaders.
+ * TSL: bilinear sample of a simulation display atlas (faces in a 3×2 layout, n×n cells each
+ * plus `gutter` texels per side copied from the neighbouring faces) at unit direction d.
+ * Uses textureLoad, so it works for unfilterable float32 textures and in vertex shaders.
  */
-export function sampleFaceAtlas(tex: Texture, d: Node, n: number): Node {
+export function sampleFaceAtlas(tex: Texture, d: Node, n: number, gutter = 1): Node {
   const { face, st } = eacFaceST(d)
+  const m = n + 2 * gutter
   const fx = mod(face as any, 3) as any
   const fy = floor((face as any).div(3)) as any
   const p = (st as any).mul(n).sub(0.5)
   const p0 = floor(p) as any
   const w = p.sub(p0)
   const ld = (ox: number, oy: number) => {
-    const ix = clamp(p0.x.add(ox), 0, n - 1) as any
-    const iy = clamp(p0.y.add(oy), 0, n - 1) as any
-    return textureLoad(tex, ivec2(int(fx.mul(n).add(ix)), int(fy.mul(n).add(iy)))) as any
+    const ix = clamp(p0.x.add(ox), -gutter, n - 1 + gutter) as any
+    const iy = clamp(p0.y.add(oy), -gutter, n - 1 + gutter) as any
+    return textureLoad(tex, ivec2(int(fx.mul(m).add(ix).add(gutter)), int(fy.mul(m).add(iy).add(gutter)))) as any
   }
   return mix(mix(ld(0, 0), ld(1, 0), w.x), mix(ld(0, 1), ld(1, 1), w.x), w.y) as unknown as Node
 }

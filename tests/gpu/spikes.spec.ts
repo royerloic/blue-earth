@@ -60,8 +60,8 @@ for (const backend of ['webgpu', 'webgl2']) {
 test('clicking the ocean drops a wave that changes the picture', async ({ page }) => {
   test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
   test.setTimeout(90_000)
-  await page.goto('/?date=2026-07-09T23:00:00Z&lat=5&lon=-160&alt=9000&clouds=0&warp=1200')
-  await expect(page.locator('.be-hud')).toBeVisible()
+  await page.goto('/?date=2026-07-09T23:00:00Z&lat=5&lon=-160&alt=9000&clouds=0&warp=1200&hud=0')
+  await expect(page.locator('.be-hud')).toBeAttached()
   await page.waitForTimeout(2500)
   const box = await page.locator('canvas').boundingBox()
   const crop = { x: box!.width / 2 - 200, y: box!.height / 2 - 200, width: 400, height: 400 }

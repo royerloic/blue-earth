@@ -83,7 +83,7 @@ function injectStyle() {
   .be-hud-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
   .be-hud-label { width: 86px; opacity: .75; }
   .be-hud-row input[type=range] { flex: 1; accent-color: #6f8dff; }
-  .be-hud-val { width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+  .be-hud-val { width: 96px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .be-hud-text { font-variant-numeric: tabular-nums; }
   .be-hud-note { opacity: .55; margin-top: 6px; font-size: 11px; }`
   document.head.appendChild(s)
