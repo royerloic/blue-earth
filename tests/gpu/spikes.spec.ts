@@ -37,7 +37,8 @@ for (const backend of ['webgpu', 'webgl2']) {
 
 for (const backend of ['webgpu', 'webgl2']) {
   test(`Classic 2004 GPU port is bit-exact with the Java golden frames [${backend}]`, async ({ page }) => {
-    test.setTimeout(240_000)
+    // 600 frames + 12 readbacks: minutes on CI's software renderer (2-core runner).
+    test.setTimeout(process.env.CI ? 900_000 : 240_000)
     const { data } = await runSpike(page, `spike=classic&backend=${backend}`)
     for (const r of data) expect(r.mismatches, r.executor).toEqual({})
   })
@@ -145,9 +146,10 @@ test('Classic mode: waves, sea-level strip and right-click exit', async ({ page 
   await page.mouse.down()
   await page.waitForTimeout(400)
   await page.mouse.up()
-  await page.waitForTimeout(800)
-  const after = await page.locator('body > canvas').screenshot()
-  expect(Buffer.compare(before, after)).not.toBe(0)
+  // Poll: on a software renderer a new frame can take a while.
+  await expect
+    .poll(async () => Buffer.compare(before, await page.locator('body > canvas').screenshot()), { timeout: 30_000 })
+    .not.toBe(0)
   await page.mouse.click(X(400), Y(300), { button: 'right' })
   await page.waitForURL((u) => !u.search.includes('mode=classic'))
   expect(errors).toEqual([])
