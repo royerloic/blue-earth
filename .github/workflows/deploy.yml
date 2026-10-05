@@ -11,6 +11,12 @@ permissions:
 
 concurrency: { group: pages, cancel-in-progress: true }
 
+env:
+  DATA_TAG: data-v1
+  # Tiers served from Pages (1 GB site / 100 GB-month bandwidth). High (61 MB) needs a CDN:
+  # set VITE_ASSET_BASE to it and drop "high" here.
+  PAGES_TIERS: low medium
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -19,8 +25,21 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci
-      # Later: `gh release download data-vN` into public/data before building (see docs/PLAN.md).
+      - name: Fetch globe data release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          mkdir -p public/data /tmp/data
+          gh release download "$DATA_TAG" -p manifest.json -D public/data
+          for t in $PAGES_TIERS; do
+            gh release download "$DATA_TAG" -p "blue-earth-data-$t.tar" -D /tmp/data
+            tar -xf "/tmp/data/blue-earth-data-$t.tar" -C public/data
+          done
+          # Keep only the served tiers in the manifest.
+          node -e "const f='public/data/manifest.json',m=require('./'+f),k=process.env.PAGES_TIERS.split(' ');for(const t of Object.keys(m.tiers))if(!k.includes(t))delete m.tiers[t];require('fs').writeFileSync(f,JSON.stringify(m,null,2))"
       - run: npm run build
+        env: { BASE: '/${{ github.event.repository.name }}/' }
+      # Development spikes and their assets are not part of the site.
+      - run: rm -rf dist/spikes dist/spike dist/placeholder dist/tests
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:

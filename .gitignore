@@ -11,3 +11,4 @@ public/data/
 __pycache__/
 *.pyc
 .pytest_cache/
+dist-data/
