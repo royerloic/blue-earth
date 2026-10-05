@@ -13,7 +13,7 @@ import { DEFAULT_PARAMS, type SWEParams } from './swe'
  *   nb   = 4 neighbour texels packed as x + 4096·y (exact in f32)
  *   cell = (centre xyz, back dirs packed b0 + 4b1 + 16b2 + 64b3)
  *   g0–3 = (edge normal xyz, ℓ/A) per edge k
- *   bed  = (B, 0, 0, 0)
+ *   bed  = (B, η_rest, 0, 0)   η_rest = the still-water level, for displaying wave anomalies
  * Three state fields rotate: stage 1 writes U1, stage 2 reads U1 and Uⁿ and writes Uⁿ⁺¹
  * (render-to-texture cannot read and write the same target).
  */
@@ -95,6 +95,7 @@ export class SWESolver {
     this.statics = { nb: st(nb), cell: st(cell), g0: st(gk[0]), g1: st(gk[1]), g2: st(gk[2]), g3: st(gk[3]), bed: st(bedT) }
     this.states = [exec.createField(W, H), exec.createField(W, H), exec.createField(W, H)]
     exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
+    this.setRest(initialEta)
     this.manning.value = p.manning
     this.coriolis.value = p.coriolis ? 1 : 0
 
@@ -114,6 +115,34 @@ export class SWESolver {
   /** The field holding the current state (η, mx, my, mz). */
   get state(): Field {
     return this.states[this.cur]
+  }
+
+  /** Replaces the state with η = `eta` (per cell id) and zero momentum; η becomes η_rest. */
+  reset(eta: Float32Array | Float64Array) {
+    const init = new Float32Array(this.width * this.height * 4)
+    for (let c = 0; c < eta.length; c++) init[this.texelOf(c)] = eta[c]
+    this.setRest(eta)
+    const f = this.exec.createStatic(this.width, this.height, init)
+    this.exec.pass<'src'>(({ src }, q) => src(q), { src: f }, this.states[this.cur])()
+    ;(f as unknown as { texture: { dispose(): void } }).texture.dispose()
+    this.pending = []
+  }
+
+  /**
+   * A pass from the current state (and bed) into a fixed output field, e.g. the display
+   * texture the renderer samples. Returns a function that runs it for whichever state is current.
+   */
+  view(kernel: Kernel<'u' | 'bed'>, output: Field): () => void {
+    const passes = this.states.map((st) => this.exec.pass(kernel, { u: st, bed: this.statics.bed }, output))
+    return () => passes[this.cur]()
+  }
+
+  /** Stores the still-water level per cell in bed.y (used by display views). */
+  setRest(eta: Float32Array | Float64Array) {
+    const tex = (this.statics.bed as unknown as { texture: THREE.DataTexture }).texture
+    const data = tex.image.data as Float32Array
+    for (let c = 0; c < eta.length; c++) data[this.texelOf(c) + 1] = eta[c]
+    tex.needsUpdate = true
   }
 
   addImpulse(i: Impulse) {

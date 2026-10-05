@@ -1,4 +1,4 @@
-import { abs, atan, dFdx, dFdy, float, log2, max, select, texture, vec2, vec3 } from 'three/tsl'
+import { abs, atan, clamp, dFdx, dFdy, float, floor, int, ivec2, log2, max, mix, mod, select, texture, textureLoad, vec2, vec3 } from 'three/tsl'
 import type { Texture } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 
@@ -96,4 +96,24 @@ export function sampleEACArray(tex: Texture, d: Node, n: number, gutter: number,
     node = node.level(lod)
   }
   return node as Node
+}
+
+/**
+ * TSL: bilinear sample of a simulation atlas (faces in a 3×2 layout, n×n cells each, no
+ * gutters) at unit direction d, clamped inside the face. Uses textureLoad, so it works for
+ * unfilterable float32 textures and in vertex shaders.
+ */
+export function sampleFaceAtlas(tex: Texture, d: Node, n: number): Node {
+  const { face, st } = eacFaceST(d)
+  const fx = mod(face as any, 3) as any
+  const fy = floor((face as any).div(3)) as any
+  const p = (st as any).mul(n).sub(0.5)
+  const p0 = floor(p) as any
+  const w = p.sub(p0)
+  const ld = (ox: number, oy: number) => {
+    const ix = clamp(p0.x.add(ox), 0, n - 1) as any
+    const iy = clamp(p0.y.add(oy), 0, n - 1) as any
+    return textureLoad(tex, ivec2(int(fx.mul(n).add(ix)), int(fy.mul(n).add(iy)))) as any
+  }
+  return mix(mix(ld(0, 0), ld(1, 0), w.x), mix(ld(0, 1), ld(1, 1), w.x), w.y) as unknown as Node
 }

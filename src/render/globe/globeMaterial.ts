@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu'
 import {
   abs,
+  min,
   cameraViewMatrix,
   cross,
   float,
@@ -17,7 +18,7 @@ import {
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { NO_LAKE, type GlobeData } from '../../core/assets/globeData'
-import { sampleEACArray } from '../../core/geo/cubeEAC'
+import { sampleEACArray, sampleFaceAtlas } from '../../core/geo/cubeEAC'
 import { EARTH_RADIUS } from '../../core/geo/units'
 
 /** Uniforms the app drives every frame. */
@@ -31,6 +32,12 @@ export class GlobeUniforms {
   readonly cloudAmount = uniform(1)
   readonly nightIntensity = uniform(0.4)
   readonly waterRoughness = uniform(0.35)
+  /** Vertical exaggeration of simulated waves (relative to the static water level). */
+  readonly waveExaggeration = uniform(300)
+  /** Extra gain on wave slopes for shading (orbit-scale waves are very flat). */
+  readonly waveNormalGain = uniform(4000)
+  /** Crest/trough tint strength (0 = physically plain water). */
+  readonly waveTint = uniform(1)
 }
 
 const any = (n: unknown) => n as any
@@ -40,9 +47,23 @@ const any = (n: unknown) => n as any
  * rule at sea level S (ocean where F ≤ S, inland water where L > B). Lit by takram's
  * AtmosphereLight through MeshPhysicalNodeMaterial.
  */
-export function createGlobeMaterial(data: GlobeData, u: GlobeUniforms, sunDirection: Node, debug?: string | null): THREE.MeshPhysicalNodeMaterial {
+/** Simulated ocean to display: atlas texture of (η, h, ·, ·) on an n×n-per-face grid. */
+export interface OceanDisplay {
+  texture: THREE.Texture
+  n: number
+}
+
+export function createGlobeMaterial(
+  data: GlobeData,
+  u: GlobeUniforms,
+  sunDirection: Node,
+  ocean?: OceanDisplay,
+  debug?: string | null,
+): THREE.MeshPhysicalNodeMaterial {
   const { n, gutter } = data
+  const ocean_ = ocean
   const terrainAt = (d: Node) => any(sampleEACArray(data.terrain, d, n, gutter, false))
+  const simAt = (d: Node) => any(sampleFaceAtlas(ocean!.texture, d, ocean!.n))
 
   /** Surface classification and level (m) at unit direction d. */
   const surface = (d: Node) => {
@@ -53,8 +74,18 @@ export function createGlobeMaterial(data: GlobeData, u: GlobeUniforms, sunDirect
     const S = any(u.seaLevel)
     const ocean = F.lessThanEqual(S)
     const lake = ocean.not().and(L.greaterThan(B)).and(L.greaterThan(NO_LAKE + 1))
-    const level = select(ocean, max(S, B), select(lake, L, B))
-    return { B, F, L, ocean, lake, water: ocean.or(lake), level, depth: max(level.sub(B), 0) }
+    const still = select(ocean, max(S, B), select(lake, L, B))
+    const water = ocean.or(lake)
+    let level: any = still
+    let eta: any = still
+    if (ocean_) {
+      // Wave anomaly (η − η_rest) from the sim, exaggerated on top of the still level.
+      const sim = simAt(d)
+      const anomaly = select(sim.y.greaterThan(0.05), sim.x, float(0))
+      eta = still.add(anomaly)
+      level = select(water, still.add(anomaly.mul(u.waveExaggeration)), B)
+    }
+    return { B, F, L, ocean, lake, water, level, still, eta, depth: max(still.sub(B), 0) }
   }
 
   const material = new THREE.MeshPhysicalNodeMaterial({ ior: 1.33 })
@@ -78,7 +109,20 @@ export function createGlobeMaterial(data: GlobeData, u: GlobeUniforms, sunDirect
   const gx = lv(d.add(east.mul(delta))).sub(lv(d.sub(east.mul(delta)))).mul(scale)
   const gy = lv(d.add(north.mul(delta))).sub(lv(d.sub(north.mul(delta)))).mul(scale)
   const terrainNormal = d.sub(east.mul(gx)).sub(north.mul(gy)).normalize()
-  const normalWorldN = select(s.water, d, terrainNormal)
+  let waterNormal: any = d
+  if (ocean_) {
+    // Wave slopes from the simulated η at ±1 sim cell, with a shading gain.
+    const ds = Math.PI / 2 / ocean_.n
+    const ev = (dir: any) => surface(dir.normalize()).eta
+    const ws = any(u.waveNormalGain).div(2 * ds * EARTH_RADIUS)
+    const wx = ev(d.add(east.mul(ds))).sub(ev(d.sub(east.mul(ds)))).mul(ws)
+    const wy = ev(d.add(north.mul(ds))).sub(ev(d.sub(north.mul(ds)))).mul(ws)
+    // Clamp the tilt so steep near-field waves don't flip the normal.
+    const tilt = vec3(wx, wy, 0) as any
+    const lim = min(float(1), float(0.6).div(max(tilt.length(), 1e-6)))
+    waterNormal = d.sub(east.mul(wx.mul(lim))).sub(north.mul(wy.mul(lim))).normalize()
+  }
+  const normalWorldN = select(s.water, waterNormal, terrainNormal)
   // normalNode is view space. (TSL's n.transformDirection(cameraViewMatrix) is the inverse,
   // view → world, as used in three's Normal.js.)
   material.normalNode = any(cameraViewMatrix).mul(vec4(any(normalWorldN), 0)).xyz.normalize()
@@ -93,7 +137,15 @@ export function createGlobeMaterial(data: GlobeData, u: GlobeUniforms, sunDirect
   const deepBlue = vec3(0.004, 0.02, 0.06)
   const flooded = mix(albedo.mul(vec3(0.45, 0.65, 0.85)), deepBlue, saturate(s.depth.div(40)))
   const seabed = mix(vec3(0.5, 0.45, 0.36), vec3(0.3, 0.29, 0.28), saturate(s.B.negate().div(1500)))
-  const ground = select(s.ocean, select(wasOcean, albedo, flooded), select(wasOcean.and(s.lake.not()), seabed, albedo))
+  let ground: any = select(s.ocean, select(wasOcean, albedo, flooded), select(wasOcean.and(s.lake.not()), seabed, albedo))
+  if (ocean_) {
+    // Make waves legible from orbit: crests lighten toward sea-foam blue, troughs deepen.
+    const an = any(s.eta.sub(s.still))
+    const crest = saturate(an.div(0.4)).mul(u.waveTint)
+    const trough = saturate(an.negate().div(0.4)).mul(u.waveTint)
+    const waterTinted = mix(mix(ground, vec3(0.45, 0.75, 0.9), saturate(crest.mul(0.75))), ground.mul(0.25), saturate(trough.mul(0.7)))
+    ground = select(s.water, waterTinted, ground)
+  }
 
   // Clouds (on the surface, as in takram's Blue Marble example) with an offset shadow.
   const sun = any(sunDirection)
@@ -120,6 +172,12 @@ export function createGlobeMaterial(data: GlobeData, u: GlobeUniforms, sunDirect
   if (flags.has('nonormal')) material.normalNode = null
   if (flags.has('nodisp')) material.positionNode = dirGeom.mul(EARTH_RADIUS)
   if (flags.has('rough')) material.roughnessNode = float(0.1)
+  if (flags.has('wave')) {
+    // Red = crest, blue = trough, saturating at ±0.5 m.
+    const a = saturate(any(s.eta.sub(s.still)).div(0.5))
+    const b = saturate(any(s.still.sub(s.eta)).div(0.5))
+    material.colorNode = vec4(mix(mix(vec3(0.05), vec3(1, 0.2, 0.1), a), vec3(0.1, 0.3, 1), b), 1)
+  }
   if (debug === 'normal') {
     material.colorNode = vec4(0, 0, 0, 1)
     material.emissiveNode = any(normalWorldN).mul(0.5).add(0.5)

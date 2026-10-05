@@ -1,0 +1,15 @@
+// Drops waves by clicking and screenshots the globe: node tools/drop-check.mjs <url> <out-prefix>
+import { chromium } from '@playwright/test'
+const [url, out] = process.argv.slice(2)
+const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-unsafe-webgpu', '--use-angle=metal'] })
+const p = await b.newPage({ viewport: { width: 1280, height: 800 } })
+p.on('console', (m) => /^(ocean sim|drop)/.test(m.text()) && console.log(m.text()))
+p.on('pageerror', (e) => console.log('ERR', e.message))
+await p.goto(url)
+await p.waitForTimeout(6000)
+await p.mouse.click(640, 400)
+await p.waitForTimeout(2500)
+await p.screenshot({ path: `${out}-a.png` })
+await p.waitForTimeout(4000)
+await p.screenshot({ path: `${out}-b.png` })
+await b.close()

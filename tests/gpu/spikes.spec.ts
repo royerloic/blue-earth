@@ -57,6 +57,23 @@ for (const backend of ['webgpu', 'webgl2']) {
   })
 }
 
+test('clicking the ocean drops a wave that changes the picture', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  test.setTimeout(90_000)
+  await page.goto('/?date=2026-07-09T23:00:00Z&lat=5&lon=-160&alt=9000&clouds=0&warp=1200')
+  await expect(page.locator('.be-hud')).toBeVisible()
+  await page.waitForTimeout(2500)
+  const box = await page.locator('canvas').boundingBox()
+  const crop = { x: box!.width / 2 - 200, y: box!.height / 2 - 200, width: 400, height: 400 }
+  const before = await page.screenshot({ clip: crop })
+  const drop = page.waitForEvent('console', (m) => m.text().startsWith('drop'))
+  await page.mouse.click(box!.width / 2, box!.height / 2)
+  await drop
+  await page.waitForTimeout(3000)
+  const after = await page.screenshot({ clip: crop })
+  expect(Buffer.compare(before, after)).not.toBe(0)
+})
+
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
   await page.route('**/data/manifest.json', (r) => r.fulfill({ status: 404, body: 'nope' }))
   await page.goto('/')

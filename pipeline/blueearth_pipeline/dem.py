@@ -101,6 +101,7 @@ def lake_levels(b: np.ndarray, water: np.ndarray, nbr: np.ndarray, f: np.ndarray
 
 
 PROTECTED_LOWLAND_FLOOD = 2.0  # m: below-sea-level land (polders, dikes) floods at S > this
+PROTECTED_LOWLAND_MIN_BED = -15.0  # m: deepest bed that can be a protected lowland (Dutch polders ≈ −7 m)
 
 
 def build(n: int, surface: np.ndarray, bed: np.ndarray, water_eq: np.ndarray, land_eq: np.ndarray) -> dict[str, np.ndarray]:
@@ -112,8 +113,10 @@ def build(n: int, surface: np.ndarray, bed: np.ndarray, water_eq: np.ndarray, la
     f = priority_flood(bf, nbr, bf < OCEAN_SEED_DEPTH)
     # Land per Natural Earth that the DEM connects to the sea below 0 m (Netherlands, …)
     # is dike-protected today: keep it dry until the sea rises a little.
+    # Only shallow lowlands qualify: at coarse resolutions the land mask also covers steep
+    # coasts, fjords and small islands, which must stay ocean.
     land = to_faces(land_eq.astype(np.float32), n).ravel() > 0.5
-    f = np.where(land & (f <= 0), PROTECTED_LOWLAND_FLOOD, f)
+    f = np.where(land & (f <= 0) & (bf > PROTECTED_LOWLAND_MIN_BED), PROTECTED_LOWLAND_FLOOD, f)
     water = to_faces(water_eq, n).ravel() > 0.5
     lvl = lake_levels(bf, water, nbr, f)
     return {

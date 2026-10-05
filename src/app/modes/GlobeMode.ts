@@ -9,6 +9,7 @@ import { Atmosphere } from '../../render/atmosphere/atmosphere'
 import { createCubeSphere } from '../../render/globe/cubeSphere'
 import { createGlobeMaterial, GlobeUniforms } from '../../render/globe/globeMaterial'
 import { Hud } from '../../ui/hud'
+import { OceanSim } from '../../sim/OceanSim'
 
 type Scheme = 'explorer' | 'classic'
 
@@ -35,12 +36,15 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
 
   const uniforms = new GlobeUniforms()
   uniforms.seaLevel.value = Number(q.get('S') ?? 0)
+  const t0 = performance.now()
+  const sim = new OceanSim(renderer, backend, data, uniforms.seaLevel.value)
+  console.log(`ocean sim: ${sim.grid.cells} cells, dt ${sim.dt.toFixed(1)} s, setup ${(performance.now() - t0).toFixed(0)} ms`)
   const atmosphere = new Atmosphere(renderer, scene, camera)
   if (q.has('exposure')) atmosphere.exposure.value = Number(q.get('exposure'))
   if (q.has('night')) uniforms.nightIntensity.value = Number(q.get('night'))
   if (q.has('rough')) uniforms.waterRoughness.value = Number(q.get('rough'))
   if (q.has('raymarch')) atmosphere.context.raymarchScattering = q.get('raymarch') !== '0'
-  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(data, uniforms, atmosphere.context.sunDirectionECEF, q.get('debug')))
+  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(data, uniforms, atmosphere.context.sunDirectionECEF, { texture: sim.displayTexture, n: sim.N }, q.get('debug')))
   globe.frustumCulled = false
   scene.add(globe)
 
@@ -83,6 +87,20 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       sunText.textContent = 'manual (R = real sun)'
     }
   })
+  // Click (no drag) drops a wave where the pointer hits the globe.
+  let down: { x: number; y: number; t: number } | null = null
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button === 0) down = { x: e.clientX, y: e.clientY, t: performance.now() }
+  })
+  el.addEventListener('pointerup', (e) => {
+    if (!down || e.button !== 0) return
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y)
+    if (moved < 5 && performance.now() - down.t < 500) {
+      const p = pickGlobe(camera, el, e.clientX, e.clientY, new THREE.Vector3())
+      if (p) sim.drop(p, waveAmplitude)
+    }
+    down = null
+  })
   addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase()
     if (k === 'k') {
@@ -96,7 +114,17 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
 
   // --- HUD -----------------------------------------------------------------------------
   const hud = new Hud('Blue Earth')
-  hud.slider('Sea level', -130, 80, 1, uniforms.seaLevel.value, (v) => `${v > 0 ? '+' : ''}${v} m`, (v) => (uniforms.seaLevel.value = v))
+  const sea = hud.slider('Sea level', -130, 80, 1, uniforms.seaLevel.value, (v) => `${v > 0 ? '+' : ''}${v} m`, (v) => (uniforms.seaLevel.value = v))
+  sea.input.addEventListener('change', () => sim.setSeaLevel(uniforms.seaLevel.value))
+  let warp = Number(q.get('warp') ?? 600)
+  let waveAmplitude = 20
+  hud.slider('Sim speed', 0, 3000, 50, warp, (v) => (v ? `×${v}` : 'paused'), (v) => (warp = v))
+  hud.slider('Drop height', 1, 100, 1, waveAmplitude, (v) => `${v} m`, (v) => (waveAmplitude = v))
+  hud.slider('Waves', 0, 2, 0.05, uniforms.waveTint.value, (v) => (v ? `highlight ×${v.toFixed(2)}` : 'realistic'), (v) => {
+    uniforms.waveTint.value = v
+    uniforms.waveNormalGain.value = 4000 * v + 1
+  })
+  const simText = hud.text('Sim time')
   hud.slider('Relief', 1, 50, 1, uniforms.exaggeration.value, (v) => `×${v}`, (v) => (uniforms.exaggeration.value = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
   const setDay = (doy: number) => {
@@ -115,7 +143,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   sunText.textContent = 'real (date & time)'
   const posText = hud.text('Cursor')
   const schemeText = hud.text('Controls')
-  hud.note(`Space: fullscreen · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
+  hud.note(`Click: drop a wave · Space: fullscreen · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
   applyScheme()
 
   addEventListener('resize', () => {
@@ -141,6 +169,9 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       celestial.sun.copy(manualSun)
     }
     atmosphere.setCelestial(celestial.sun, celestial.moon, celestial.eciToEcef)
+    sim.advance(dt, warp)
+    const h = sim.solver.time / 3600
+    simText.textContent = `${Math.floor(h)} h ${String(Math.floor((h % 1) * 60)).padStart(2, '0')} min · dt ${sim.dt.toFixed(0)} s`
     uniforms.monthWeights.value.fromArray(monthWeights(date))
 
     // Keep depth precision: near/far follow the altitude.
