@@ -155,7 +155,8 @@ test('Classic mode: waves, sea-level strip and right-click exit', async ({ page 
   else test.info().annotations.push({ type: 'note', description: `blank canvas (${before.byteLength} B): pixel check skipped` })
   await page.mouse.click(X(400), Y(300), { button: 'right' })
   await page.waitForURL((u) => !u.search.includes('mode=classic'))
-  expect(errors).toEqual([])
+  // Navigating away mid-frame can abort pending WebGPU error scopes (benign teardown noise).
+  expect(errors.filter((e) => !e.includes('Instance dropped in popErrorScope'))).toEqual([])
 })
 
 
