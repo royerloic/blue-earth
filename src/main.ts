@@ -24,7 +24,10 @@ async function main() {
   installFullscreenToggle()
   const info = await createRenderer()
   const mode = new URLSearchParams(location.search).get('mode')
-  if (mode === 'classic') await startClassicMode(info, () => gotoMode('globe'))
+  if (mode === 'classic') {
+    addEventListener('keydown', (e) => e.key.toLowerCase() === 'c' && gotoMode('globe'))
+    await startClassicMode(info, () => gotoMode('globe'))
+  }
   else {
     addEventListener('keydown', (e) => e.key.toLowerCase() === 'c' && gotoMode('classic'))
     try {

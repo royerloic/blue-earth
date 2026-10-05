@@ -78,7 +78,7 @@ function createOverlay(): HTMLDivElement {
   div.innerHTML = `
     <div class="classic-title" data-text="Blue Earth">Blue Earth</div>
     <div class="classic-subtitle">Designed and coded by Loic Royer in 100% pure Java, 2004.<br/>Reimagined for the web, 2026.</div>
-    <div class="classic-hint">click: waves · bottom edge: sea level · space: fullscreen · right-click: exit</div>`
+    <div class="classic-hint">click: waves · bottom edge: sea level · space: fullscreen · C or right-click: back to the globe</div>`
   document.body.appendChild(div)
   const style = document.createElement('style')
   style.textContent = `
