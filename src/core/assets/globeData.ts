@@ -37,21 +37,45 @@ export interface GlobeData {
 
 export const NO_LAKE = -10000
 
-/** Loads every texture of one quality tier. `base` defaults to the app's data folder. */
+const manifests = new Map<string, Promise<DataManifest>>()
+const defaultBase = () => `${import.meta.env.VITE_ASSET_BASE ?? import.meta.env.BASE_URL}data/`
+
+function manifestAt(base: string): Promise<DataManifest> {
+  if (!manifests.has(base)) manifests.set(base, fetch(`${base}manifest.json`).then((r) => r.json()))
+  return manifests.get(base)!
+}
+
+function tierOf(manifest: DataManifest, tier: string) {
+  const t = manifest.tiers[tier]
+  if (!t) throw new Error(`unknown data tier "${tier}" (have: ${Object.keys(manifest.tiers).join(', ')})`)
+  return t
+}
+
+/** Only a tier's simulation bathymetry (small), e.g. to start the sim at full resolution early. */
+export async function loadSimData(renderer: THREE.WebGPURenderer, tier: string, base = defaultBase()) {
+  const t = tierOf(await manifestAt(base), tier)
+  const sim = await new Ktx2Arrays(renderer, `${import.meta.env.BASE_URL}basis/`).load(`${base}${tier}/${t.files.sim}`)
+  return { sim, nSim: t.sim }
+}
+
+/**
+ * Loads every texture of one quality tier. `base` defaults to the app's data folder; pass an
+ * already loaded `sim` texture to skip fetching it again.
+ */
 export async function loadGlobeData(
   renderer: THREE.WebGPURenderer,
   tier: string,
-  base = `${import.meta.env.VITE_ASSET_BASE ?? import.meta.env.BASE_URL}data/`,
+  base = defaultBase(),
+  reuse: { sim?: THREE.Texture } = {},
 ): Promise<GlobeData> {
-  const manifest: DataManifest = await (await fetch(`${base}manifest.json`)).json()
-  const t = manifest.tiers[tier]
-  if (!t) throw new Error(`unknown data tier "${tier}" (have: ${Object.keys(manifest.tiers).join(', ')})`)
+  const manifest = await manifestAt(base)
+  const t = tierOf(manifest, tier)
   const loader = new Ktx2Arrays(renderer, `${import.meta.env.BASE_URL}basis/`)
   const url = (f: string) => `${base}${tier}/${f}`
   const months = Object.keys(t.files.albedo)
   const [terrain, sim, night, clouds, ...albedo] = await Promise.all([
     loader.load(url(t.files.terrain)),
-    loader.load(url(t.files.sim)),
+    reuse.sim ? Promise.resolve(reuse.sim) : loader.load(url(t.files.sim)),
     loader.load(url(t.files.night)),
     loader.load(url(t.files.clouds)),
     ...months.map((m) => loader.load(url(t.files.albedo[m]))),

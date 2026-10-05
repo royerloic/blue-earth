@@ -103,6 +103,16 @@ test('a preset places tide gauges that record the wave', async ({ page }) => {
   expect(ink).toBeGreaterThan(2000)
 })
 
+test('progressive start: Low imagery first, then upgraded to Medium', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  const first = page.waitForEvent('console', (m) => m.text().startsWith('first data (low + medium sim)'))
+  const upgraded = page.waitForEvent('console', { predicate: (m) => m.text().startsWith('upgraded to medium'), timeout: 60_000 })
+  await page.goto('/?intro=0&tier=medium')
+  await first
+  await upgraded
+  await expect(page.locator('.be-hud .tier')).toHaveText('tier medium')
+})
+
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
   await page.route('**/data/manifest.json', (r) => r.fulfill({ status: 404, body: 'nope' }))
   await page.goto('/')

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { loadGlobeData } from '../../core/assets/globeData'
+import { loadGlobeData, loadSimData } from '../../core/assets/globeData'
 import { fromLatLon, pickGlobe, sunForGlintAt, toLatLon } from '../../core/geo/picking'
 import { EARTH_RADIUS } from '../../core/geo/units'
 import type { RendererInfo } from '../../core/renderer'
@@ -29,7 +29,13 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   document.body.appendChild(renderer.domElement)
 
   const tier = pickTier(backend, q)
-  const data = await loadGlobeData(renderer, tier)
+  // Progressive start: show the 5 MB Low imagery right away, but run the simulation on the
+  // target tier's bathymetry from the start; the full imagery is swapped in when it arrives.
+  const progressive = tier !== 'low' && q.get('progressive') !== '0'
+  const tLoad = performance.now()
+  const [first, simData] = await Promise.all([loadGlobeData(renderer, progressive ? 'low' : tier), progressive ? loadSimData(renderer, tier) : null])
+  const data = simData ? { ...first, ...simData } : first
+  console.log(`first data (${first.tier}${simData ? ` + ${tier} sim` : ''}) in ${(performance.now() - tLoad).toFixed(0)} ms`)
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 1e4, 1e9)
@@ -49,7 +55,16 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   if (q.has('rough')) uniforms.waterRoughness.value = Number(q.get('rough'))
   if (q.has('wind')) uniforms.setWind(Number(q.get('wind')))
   if (q.has('raymarch')) atmosphere.context.raymarchScattering = q.get('raymarch') !== '0'
-  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(data, uniforms, atmosphere.context.sunDirectionECEF, { texture: sim.displayTexture, diagTexture: sim.diagTexture, n: sim.N }, q.get('debug')))
+  const oceanDisplay = { texture: sim.displayTexture, diagTexture: sim.diagTexture, n: sim.N }
+  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(first, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug')))
+  if (progressive)
+    void loadGlobeData(renderer, tier, undefined, { sim: data.sim }).then((full) => {
+      const old = globe.material as THREE.Material
+      globe.material = createGlobeMaterial(full, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug'))
+      old.dispose()
+      console.log(`upgraded to ${tier} imagery after ${(performance.now() - tLoad).toFixed(0)} ms`)
+      tierNote.textContent = `tier ${tier}`
+    })
   globe.frustumCulled = false
   scene.add(globe)
 
@@ -241,7 +256,8 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const posText = hud.text('Cursor')
   const schemeText = hud.text('Controls')
   if (q.get('hud') === '0') hud.root.style.display = 'none'
-  hud.note(`Click: drop a wave (hold: oscillate) · G: tide gauge at cursor · L: copy link · I: about · Space: fullscreen · H: hide panel · K: switch controls · R: real sun · C: Classic 2004 · tier ${data.tier} · ${backend}`)
+  const noteEl = hud.note(`Click: drop a wave (hold: oscillate) · G: tide gauge at cursor · L: copy link · I: about · Space: fullscreen · H: hide panel · K: switch controls · R: real sun · C: Classic 2004 · <span class="tier">tier ${first.tier}${progressive ? ` → ${tier}…` : ''}</span> · ${backend}`)
+  const tierNote = noteEl.querySelector('.tier') as HTMLElement
   applyScheme()
 
   addEventListener('resize', () => {
