@@ -63,6 +63,16 @@ export class Hud {
     return wrap
   }
 
+  select(label: string, options: { value: string; text: string }[], onChange: (v: string) => void) {
+    const row = this.row(label)
+    const sel = document.createElement('select')
+    sel.className = 'be-hud-select'
+    for (const o of options) sel.add(new Option(o.text, o.value))
+    sel.addEventListener('change', () => onChange(sel.value))
+    row.append(sel)
+    return sel
+  }
+
   text(label: string) {
     const row = this.row(label)
     const span = document.createElement('span')
@@ -104,6 +114,8 @@ function injectStyle() {
   .be-hud-val { width: 96px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .be-hud-text { font-variant-numeric: tabular-nums; }
   .be-hud-note { opacity: .55; margin-top: 6px; font-size: 11px; }
+  .be-hud-select { flex: 1; font: inherit; color: #cfdcff; background: rgba(20, 28, 50, 0.9);
+    border: 1px solid rgba(140, 170, 255, 0.25); border-radius: 5px; padding: 2px 4px; }
   .be-hud-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
   .be-hud-buttons button { font: inherit; font-size: 11px; color: #cfdcff; background: rgba(111, 141, 255, 0.14);
     border: 1px solid rgba(140, 170, 255, 0.25); border-radius: 5px; padding: 1px 7px; cursor: pointer; }

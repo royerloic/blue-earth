@@ -9,6 +9,7 @@ import type { Executor, Field } from './executor/types'
 import { buildCubeGrid, type CubeGrid } from './grid'
 import { DEFAULT_PARAMS, stableDt } from './swe'
 import { SWESolver } from './SWESolver'
+import { segmentUplift, type FaultSegment } from './okada'
 
 /** Must match PROTECTED_LOWLAND_FLOOD in pipeline/blueearth_pipeline/dem.py. */
 const PROTECTED_FLOOD = 2
@@ -136,6 +137,38 @@ export class OceanSim {
   /** Calm sea: the ocean back at rest at the current sea level, diagnostics cleared. */
   calm() {
     this.setSeaLevel(this.seaLevel)
+  }
+
+  /**
+   * Earthquake source: Okada seafloor uplift of the fault segments, added to the sea surface
+   * (instantaneous rupture, long-wave approximation). Returns the peak uplift (m).
+   */
+  applyFault(segments: FaultSegment[]): { maxUp: number; maxDown: number } {
+    const g = this.grid
+    const delta = new Float32Array(g.cells)
+    const rad = Math.PI / 180
+    const centres = segments.map((s) => [Math.cos(s.lat * rad) * Math.cos(s.lon * rad), Math.cos(s.lat * rad) * Math.sin(s.lon * rad), Math.sin(s.lat * rad)])
+    const near = Math.cos(15 * rad)
+    let maxUp = 0
+    let maxDown = 0
+    for (let c = 0; c < g.cells; c++) {
+      const x = g.center[c * 3], y = g.center[c * 3 + 1], z = g.center[c * 3 + 2]
+      let uz = 0
+      let hit = false
+      for (let k = 0; k < segments.length; k++) {
+        const p = centres[k]
+        if (x * p[0] + y * p[1] + z * p[2] < near) continue
+        hit = true
+        uz += segmentUplift(segments[k], Math.asin(z) / rad, Math.atan2(y, x) / rad)
+      }
+      if (!hit) continue
+      delta[c] = uz
+      maxUp = Math.max(maxUp, uz)
+      maxDown = Math.min(maxDown, uz)
+    }
+    this.solver.addEta(delta)
+    this.updateDisplay()
+    return { maxUp, maxDown }
   }
 
   /** Drops a Gaussian wave (amplitude m, radius in cells) at an ECEF point. */

@@ -51,13 +51,15 @@ export class SWESolver {
   private dp = 0
   /** Simulated seconds since the last diagnostics reset (drives arrival times). */
   readonly clock = uniform(0)
-  /** Anomaly (m) that counts as the wave's arrival. */
-  readonly arrivalThreshold = uniform(0.05)
+  /** Anomaly (m) that counts as the wave's arrival (1 cm, like an offshore gauge pick). */
+  readonly arrivalThreshold = uniform(0.01)
   private readonly statics: Record<'nb' | 'cell' | 'g0' | 'g1' | 'g2' | 'g3' | 'bed', Field>
   private readonly stage1: (() => void)[] = []
   private readonly stage2: (() => void)[] = []
   private readonly impulse: (() => void)[] = []
   private readonly seaPass: (() => void)[] = []
+  private readonly addPass: (() => void)[] = []
+  private readonly delta: Field
   readonly seaLevel = uniform(0)
   private readonly p: SWEParams
   private cur = 0
@@ -111,6 +113,7 @@ export class SWESolver {
     this.statics = { nb: st(nb), cell: st(cell), g0: st(gk[0]), g1: st(gk[1]), g2: st(gk[2]), g3: st(gk[3]), bed: st(bedT) }
     this.states = [exec.createField(W, H), exec.createField(W, H), exec.createField(W, H)]
     this.diags = [exec.createField(W, H), exec.createField(W, H)]
+    this.delta = exec.createStatic(W, H, new Float32Array(W * H * 4))
     exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
     for (const d of this.diags) {
       const clear = exec.pass(() => vec4(0, -1, 0, 0) as unknown as Node, {}, d)
@@ -123,6 +126,13 @@ export class SWESolver {
     const k1 = this.stageKernel(1)
     const k2 = this.stageKernel(2)
     const ki = this.impulseKernel()
+    // Adds a per-cell η field (e.g. Okada seafloor uplift) to wet cells.
+    const ka: Kernel<In> = ({ u, base, bed }, q) => {
+      const st = u(q) as any
+      const add = (base(q) as any).x
+      const wet = st.x.sub((bed(q) as any).x).greaterThan(this.p.hDry)
+      return vec4(select(wet, st.x.add(add), st.x), st.y, st.z, st.w) as unknown as Node
+    }
     // Diagnostics update from the state just written (u) and the previous diagnostics (base).
     const kd: Kernel<In> = ({ u, base, bed }, q) => {
       const st = u(q) as any
@@ -150,6 +160,7 @@ export class SWESolver {
       this.stage2.push(exec.pass(k2, { u: B, base: A, ...this.statics }, C))
       this.impulse.push(exec.pass(ki, { u: A, base: A, ...this.statics }, B))
       this.seaPass.push(exec.pass(ks, { u: A, base: A, ...this.statics }, B))
+      this.addPass.push(exec.pass(ka, { u: A, base: this.delta, ...this.statics }, B))
       this.diagPass.push([0, 1].map((d) => exec.pass(kd, { u: A, base: this.diags[d], ...this.statics }, this.diags[1 - d])))
     }
   }
@@ -197,6 +208,17 @@ export class SWESolver {
     this.clearDiagnostics()
   }
 
+  /** Adds `delta[c]` (m) to η of every wet cell c (per cell id). */
+  addEta(delta: Float32Array) {
+    const tex = (this.delta as unknown as { texture: THREE.DataTexture }).texture
+    const data = tex.image.data as Float32Array
+    data.fill(0)
+    for (let c = 0; c < delta.length; c++) if (delta[c] !== 0) data[this.texelOf(c)] = delta[c]
+    tex.needsUpdate = true
+    this.addPass[this.cur]()
+    this.cur = (this.cur + 1) % 3
+  }
+
   addImpulse(i: Impulse) {
     this.pending.push(i)
   }
@@ -213,6 +235,11 @@ export class SWESolver {
       this.diagPass[this.cur][this.dp]()
       this.dp ^= 1
     }
+  }
+
+  /** Current diagnostics (max anomaly, arrival s or −1, max inundation, ·) per texel. */
+  async readDiagnostics(): Promise<Float32Array> {
+    return this.exec.read(this.diags[this.dp])
   }
 
   async readState(): Promise<Float32Array> {
@@ -275,7 +302,9 @@ export class SWESolver {
       const Bc = ld(I.bed, q).x
       const myPacked = float(any(q).x).add(float(any(q).y).mul(PACK))
 
-      const minmod = (a: any, b: any) => select(a.mul(b).lessThanEqual(0), float(0), select(abs(a).lessThan(abs(b)), a, b))
+      /** Monotonized-central limiter (same as swe.ts mc). */
+      const minmod = (a: any, b: any) =>
+        select(a.mul(b).lessThanEqual(0), float(0), any(a).sign().mul(min(min(abs(a).mul(2), abs(b).mul(2)), abs(a.add(b)).mul(0.5))))
       /** Value at b reconstructed toward d (line a–b–d), first order near dry cells. */
       const rec = (Sa: any, Ba: any, Sb: any, Bb: any, Sd: any, Bd: any) => {
         const wet = Sa.x.sub(Ba).greaterThan(P.hEps).and(Sb.x.sub(Bb).greaterThan(P.hEps)).and(Sd.x.sub(Bd).greaterThan(P.hEps))

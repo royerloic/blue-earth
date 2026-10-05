@@ -74,6 +74,18 @@ test('clicking the ocean drops a wave that changes the picture', async ({ page }
   expect(Buffer.compare(before, after)).not.toBe(0)
 })
 
+test('Sumatra 2004 preset: modelled arrival times match observations (±30%)', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  test.setTimeout(240_000)
+  const { data } = await runSpike(page, 'spike=preset&preset=sumatra2004&hours=9')
+  const observed: Record<string, number> = { 'Sri Lanka (Batticaloa)': 2, Phuket: 2, Chennai: 2.5, 'Maldives (Malé)': 3.3, 'Somalia (Hafun)': 7 }
+  for (const [k, obs] of Object.entries(observed)) {
+    const t = data.gauges[k].arrivalH
+    expect(t, k).not.toBeNull()
+    expect(Math.abs(t / obs - 1), `${k}: ${t} h vs ${obs} h`).toBeLessThan(0.3)
+  }
+})
+
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
   await page.route('**/data/manifest.json', (r) => r.fulfill({ status: 404, body: 'nope' }))
   await page.goto('/')

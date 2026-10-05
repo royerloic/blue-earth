@@ -5,7 +5,7 @@ import { OPPOSITE, type CubeGrid } from './grid'
  *
  * State per cell: η (free-surface elevation, m) and m = h·u, a 3D Cartesian momentum vector
  * kept in the local tangent plane. Scheme (see docs/NUMERICS.md):
- *  - MUSCL (minmod) reconstruction of η and m along each edge's line of cells;
+ *  - MUSCL (MC limiter) reconstruction of η and m along each edge's line of cells;
  *  - hydrostatic reconstruction (Audusse) with Liang & Marche's bed lowering at dry faces;
  *  - η-form pressure ½g(η² − 2ηB), so the bed source cancels the flux exactly at rest;
  *  - HLL (Einfeldt speeds) fluxes; mass flux canonical by cell id (exact conservation);
@@ -29,6 +29,8 @@ export interface SWEParams {
 export const DEFAULT_PARAMS: SWEParams = { g: 9.81, omega: 7.2921e-5, hDry: 1e-3, hEps: 0.05, uMax: 30, manning: 0.025, coriolis: true }
 
 export const minmod = (a: number, b: number) => (a * b <= 0 ? 0 : Math.abs(a) < Math.abs(b) ? a : b)
+/** Monotonized-central limiter (van Leer 1977): far less crest clipping than minmod. */
+export const mc = (a: number, b: number) => (a * b <= 0 ? 0 : Math.sign(a) * Math.min(2 * Math.abs(a), 2 * Math.abs(b), 0.5 * Math.abs(a + b)))
 
 interface Side {
   h: number
@@ -188,10 +190,10 @@ export function faceStates(B: Float64Array, eta: Float64Array, m: Float64Array, 
   const rec = (a: number, b: number, d: number, out: number[]) => {
     // Value of b reconstructed toward d (line a–b–d); first order next to dry cells.
     const wet = eta[a] - B[a] > p.hEps && eta[b] - B[b] > p.hEps && eta[d] - B[d] > p.hEps
-    out[0] = eta[b] + (wet ? 0.5 * minmod(eta[b] - eta[a], eta[d] - eta[b]) : 0)
+    out[0] = eta[b] + (wet ? 0.5 * mc(eta[b] - eta[a], eta[d] - eta[b]) : 0)
     for (let q = 0; q < 3; q++) {
       const mb = m[b * 3 + q]
-      out[q + 1] = mb + (wet ? 0.5 * minmod(mb - m[a * 3 + q], m[d * 3 + q] - mb) : 0)
+      out[q + 1] = mb + (wet ? 0.5 * mc(mb - m[a * 3 + q], m[d * 3 + q] - mb) : 0)
     }
   }
   const rc = [0, 0, 0, 0]

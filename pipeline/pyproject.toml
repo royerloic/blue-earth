@@ -14,7 +14,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "okada-wrapper>=24.6.15",
+    "pytest>=8",
+]
 
 [build-system]
 requires = ["hatchling"]

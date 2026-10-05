@@ -6,6 +6,7 @@ import { runClassicSpike } from './classic/run'
 import { runDataPreview } from './data/run'
 import { runSweSpike } from './swe/run'
 import { runRestSpike } from './swe/rest'
+import { runPresetSpike } from './swe/preset'
 import { probeUniforms } from './classic/uniformProbe'
 
 // M0 spike harness. Results are logged as `SPIKE <json>` for tools/shot.mjs to collect.
@@ -21,6 +22,7 @@ async function main() {
   const which = new URLSearchParams(location.search).get('spike') ?? 'a'
   try {
     if (which === 'a') report('executors', await runExecutorSpike(renderer, backend))
+    if (which === 'preset') report('preset', await runPresetSpike(renderer, backend))
     if (which === 'rest') report('rest', await runRestSpike(renderer, backend))
     if (which === 'swe') report('swe', await runSweSpike(renderer, backend))
     if (which === 'data') report('data', await runDataPreview(renderer))

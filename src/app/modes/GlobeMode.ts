@@ -10,6 +10,7 @@ import { createCubeSphere } from '../../render/globe/cubeSphere'
 import { createGlobeMaterial, GlobeUniforms } from '../../render/globe/globeMaterial'
 import { Hud } from '../../ui/hud'
 import { OceanSim } from '../../sim/OceanSim'
+import { PRESETS } from '../../sim/presets/historical'
 
 type Scheme = 'explorer' | 'classic'
 
@@ -148,6 +149,27 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     { text: 'Calm sea', title: 'Reset the ocean to rest', onClick: () => sim.calm() },
   ])
   if (q.has('overlay')) uniforms.overlay.value = Number(q.get('overlay'))
+  const eventText = document.createElement('div')
+  eventText.className = 'be-hud-note'
+  const runPreset = (id: string) => {
+    const p = PRESETS.find((x) => x.id === id)
+    if (!p) return
+    finishIntro()
+    setSea(0)
+    date = new Date(p.date)
+    daySlider.set(dayOfYear(date))
+    hourSlider.set(date.getUTCHours() + date.getUTCMinutes() / 60)
+    sunMode = 'real'
+    fromLatLon(p.view.lat, p.view.lon, EARTH_RADIUS + p.view.alt * 1000, camera.position)
+    let info = ''
+    if (p.segments) {
+      const r = sim.applyFault(p.segments)
+      info = ` · seafloor +${r.maxUp.toFixed(1)} / ${r.maxDown.toFixed(1)} m`
+    } else if (p.impulse) sim.drop(fromLatLon(p.impulse.lat, p.impulse.lon, 1), p.impulse.amplitude, p.impulse.radiusCells)
+    eventText.innerHTML = `<b>${p.name}</b> · ${p.magnitude}${info}<br>${p.note}<br><i>Simplified source model.</i>`
+  }
+  hud.select('Tsunami', [{ value: '', text: 'Historical event…' }, ...PRESETS.map((p) => ({ value: p.id, text: `${p.name} (${p.magnitude})` }))], runPreset)
+  hud.root.appendChild(eventText)
   const simText = hud.text('Sim time')
   hud.slider('Relief', 1, 50, 1, uniforms.exaggeration.value, (v) => `×${v}`, (v) => (uniforms.exaggeration.value = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
@@ -201,6 +223,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     el.addEventListener('pointerdown', finishIntro, { once: true })
     addEventListener('keydown', finishIntro, { once: true })
   } else title.remove()
+  if (q.has('preset')) runPreset(q.get('preset')!)
 
   let last = performance.now()
   renderer.setAnimationLoop(() => {
