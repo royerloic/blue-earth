@@ -25,6 +25,11 @@ export class OceanSim {
   readonly solver: SWESolver
   readonly display: Field
   readonly displayTexture: THREE.Texture
+  /** (max anomaly m, arrival s or −1, max inundation m, ·), same gutter atlas as `display`. */
+  readonly diagDisplay: Field
+  readonly diagTexture: THREE.Texture
+  private readonly updateDiag: () => void
+  private frame = 0
   readonly N: number
   readonly dt: number
   private readonly exec: Executor
@@ -69,7 +74,8 @@ export class OceanSim {
     const M = N + 2
     this.display = this.exec.createField(3 * M, 2 * M)
     this.displayTexture = this.exec.texture(this.display)
-    this.updateDisplay = this.solver.view(({ u, bed, nb }, q) => {
+    /** Texel (in the solver atlas) shown at display texel q, including gutters from neighbours. */
+    const gutterSource = (q: Node, nb: (p: Node) => Node): Node => {
       const X = (q as any).x
       const Y = (q as any).y
       const fx = X.div(M)
@@ -88,7 +94,10 @@ export class OceanSim {
       ) as any
       const isGutter = lx.lessThan(0).or(lx.greaterThanEqual(N)).or(ly.lessThan(0)).or(ly.greaterThanEqual(N))
       const across = ivec2(int(mod(packed, 4096)), int(floor(packed.div(4096))))
-      const src = select(isGutter, across, edge as any) as unknown as Node
+      return select(isGutter, across, edge as any) as unknown as Node
+    }
+    this.updateDisplay = this.solver.view(({ u, bed, nb }, q) => {
+      const src = gutterSource(q, nb)
       const s = u(src) as any
       const b = bed(src) as any
       // Still-water level for the current sea level (same rule as setSeaLevel).
@@ -98,7 +107,11 @@ export class OceanSim {
       const speed = select(h.greaterThan(0.01), vec3(s.y, s.z, s.w).length().div(max(h, 0.01)), float(0))
       return vec4(s.x.sub(rest), h, s.x, speed) as unknown as Node
     }, this.display)
+    this.diagDisplay = this.exec.createField(3 * M, 2 * M)
+    this.diagTexture = this.exec.texture(this.diagDisplay)
+    this.updateDiag = this.solver.view(({ u, nb }, q) => u(gutterSource(q, nb)), this.diagDisplay, 'diag')
     this.updateDisplay()
+    this.updateDiag()
   }
 
   /** η at rest for sea level S: ocean where F ≤ S (connected to the sea), else dry. */
@@ -117,6 +130,12 @@ export class OceanSim {
     this.solver.setSeaLevel(S)
     this.debt = 0
     this.updateDisplay()
+    this.updateDiag()
+  }
+
+  /** Calm sea: the ocean back at rest at the current sea level, diagnostics cleared. */
+  calm() {
+    this.setSeaLevel(this.seaLevel)
   }
 
   /** Drops a Gaussian wave (amplitude m, radius in cells) at an ECEF point. */
@@ -134,6 +153,7 @@ export class OceanSim {
       this.solver.step(n)
       this.debt -= n * this.dt
       this.updateDisplay()
+      if (++this.frame % 4 === 0) this.updateDiag()
     }
     return n
   }

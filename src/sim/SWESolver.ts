@@ -44,6 +44,15 @@ export class SWESolver {
   private readonly impulseDir = Array.from({ length: MAX_IMPULSES }, () => uniform(new THREE.Vector4()))
   private readonly impulseSigma = Array.from({ length: MAX_IMPULSES }, () => uniform(1))
   private readonly states: Field[]
+  /** Diagnostics (max anomaly, first arrival time s or −1, max inundation depth, ·), ping-pong. */
+  private readonly diags: Field[]
+  private readonly diagPass: (() => void)[][] = []
+  private readonly diagClear: (() => void)[] = []
+  private dp = 0
+  /** Simulated seconds since the last diagnostics reset (drives arrival times). */
+  readonly clock = uniform(0)
+  /** Anomaly (m) that counts as the wave's arrival. */
+  readonly arrivalThreshold = uniform(0.05)
   private readonly statics: Record<'nb' | 'cell' | 'g0' | 'g1' | 'g2' | 'g3' | 'bed', Field>
   private readonly stage1: (() => void)[] = []
   private readonly stage2: (() => void)[] = []
@@ -101,13 +110,33 @@ export class SWESolver {
     const st = (d: Float32Array) => exec.createStatic(W, H, d)
     this.statics = { nb: st(nb), cell: st(cell), g0: st(gk[0]), g1: st(gk[1]), g2: st(gk[2]), g3: st(gk[3]), bed: st(bedT) }
     this.states = [exec.createField(W, H), exec.createField(W, H), exec.createField(W, H)]
+    this.diags = [exec.createField(W, H), exec.createField(W, H)]
     exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
+    for (const d of this.diags) {
+      const clear = exec.pass(() => vec4(0, -1, 0, 0) as unknown as Node, {}, d)
+      this.diagClear.push(clear)
+      clear()
+    }
     this.manning.value = p.manning
     this.coriolis.value = p.coriolis ? 1 : 0
 
     const k1 = this.stageKernel(1)
     const k2 = this.stageKernel(2)
     const ki = this.impulseKernel()
+    // Diagnostics update from the state just written (u) and the previous diagnostics (base).
+    const kd: Kernel<In> = ({ u, base, bed }, q) => {
+      const st = u(q) as any
+      const dg = base(q) as any
+      const b = bed(q) as any
+      const S = this.seaLevel as any
+      const ocean = b.y.lessThanEqual(S)
+      const rest = select(ocean, max(S, b.x), b.x)
+      const h = max(st.x.sub(b.x), 0) as any
+      const anomaly = select(h.greaterThan(0.05), st.x.sub(rest), float(0)) as any
+      const arrived = dg.y.lessThan(0).and(anomaly.greaterThan(this.arrivalThreshold))
+      const inund = select(ocean.not(), h, float(0))
+      return vec4(max(dg.x, anomaly), select(arrived, this.clock, dg.y), max(dg.z, inund), 0) as unknown as Node
+    }
     const ks: Kernel<In> = ({ bed }, q) => {
       const b = bed(q) as any
       const S = this.seaLevel as any
@@ -121,6 +150,7 @@ export class SWESolver {
       this.stage2.push(exec.pass(k2, { u: B, base: A, ...this.statics }, C))
       this.impulse.push(exec.pass(ki, { u: A, base: A, ...this.statics }, B))
       this.seaPass.push(exec.pass(ks, { u: A, base: A, ...this.statics }, B))
+      this.diagPass.push([0, 1].map((d) => exec.pass(kd, { u: A, base: this.diags[d], ...this.statics }, this.diags[1 - d])))
     }
   }
 
@@ -143,9 +173,16 @@ export class SWESolver {
    * A pass from the current state (and bed) into a fixed output field, e.g. the display
    * texture the renderer samples. Returns a function that runs it for whichever state is current.
    */
-  view(kernel: Kernel<'u' | 'bed' | 'nb'>, output: Field): () => void {
-    const passes = this.states.map((st) => this.exec.pass(kernel, { u: st, bed: this.statics.bed, nb: this.statics.nb }, output))
-    return () => passes[this.cur]()
+  view(kernel: Kernel<'u' | 'bed' | 'nb'>, output: Field, source: 'state' | 'diag' = 'state'): () => void {
+    const src = source === 'state' ? this.states : this.diags
+    const passes = src.map((st) => this.exec.pass(kernel, { u: st, bed: this.statics.bed, nb: this.statics.nb }, output))
+    return () => passes[source === 'state' ? this.cur : this.dp]()
+  }
+
+  /** Clears max height / arrival time and restarts the diagnostics clock. */
+  clearDiagnostics() {
+    for (const c of this.diagClear) c()
+    this.clock.value = 0
   }
 
   /**
@@ -157,6 +194,7 @@ export class SWESolver {
     this.seaPass[this.cur]()
     this.cur = (this.cur + 1) % 3
     this.pending = []
+    this.clearDiagnostics()
   }
 
   addImpulse(i: Impulse) {
@@ -171,6 +209,9 @@ export class SWESolver {
       this.stage2[this.cur]()
       this.cur = (this.cur + 2) % 3
       this.time += this.dt.value
+      this.clock.value += this.dt.value
+      this.diagPass[this.cur][this.dp]()
+      this.dp ^= 1
     }
   }
 

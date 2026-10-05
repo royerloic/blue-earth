@@ -45,7 +45,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   if (q.has('rough')) uniforms.waterRoughness.value = Number(q.get('rough'))
   if (q.has('wind')) uniforms.setWind(Number(q.get('wind')))
   if (q.has('raymarch')) atmosphere.context.raymarchScattering = q.get('raymarch') !== '0'
-  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(data, uniforms, atmosphere.context.sunDirectionECEF, { texture: sim.displayTexture, n: sim.N }, q.get('debug')))
+  const globe = new THREE.Mesh(createCubeSphere(256), createGlobeMaterial(data, uniforms, atmosphere.context.sunDirectionECEF, { texture: sim.displayTexture, diagTexture: sim.diagTexture, n: sim.N }, q.get('debug')))
   globe.frustumCulled = false
   scene.add(globe)
 
@@ -141,6 +141,13 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     uniforms.waveNormalGain.value = 4000 * v + 1
   })
   hud.slider('Wind', 0, 20, 0.5, uniforms.wind, (v) => `${v} m/s`, (v) => uniforms.setWind(v))
+  hud.buttons('Map', [
+    { text: 'Waves', onClick: () => (uniforms.overlay.value = 0) },
+    { text: 'Max height', title: 'Maximum wave height so far (log scale 5 cm – 20 m)', onClick: () => (uniforms.overlay.value = 1) },
+    { text: 'Arrival', title: 'Wave arrival time, hourly isochrones', onClick: () => (uniforms.overlay.value = 2) },
+    { text: 'Calm sea', title: 'Reset the ocean to rest', onClick: () => sim.calm() },
+  ])
+  if (q.has('overlay')) uniforms.overlay.value = Number(q.get('overlay'))
   const simText = hud.text('Sim time')
   hud.slider('Relief', 1, 50, 1, uniforms.exaggeration.value, (v) => `×${v}`, (v) => (uniforms.exaggeration.value = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)

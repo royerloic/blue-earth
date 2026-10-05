@@ -38,6 +38,8 @@ export class GlobeUniforms {
   readonly waveNormalGain = uniform(4000)
   /** Crest/trough tint strength (0 = physically plain water). */
   readonly waveTint = uniform(1)
+  /** 0 = none, 1 = maximum wave height, 2 = arrival time. */
+  readonly overlay = uniform(0)
   /** Wind speed (m/s) behind the water roughness. */
   wind = 7
 
@@ -62,9 +64,12 @@ const any = (n: unknown) => n as any
  * rule at sea level S (ocean where F ≤ S, inland water where L > B). Lit by takram's
  * AtmosphereLight through MeshPhysicalNodeMaterial.
  */
-/** Simulated ocean to display: atlas texture of (η, h, ·, ·) on an n×n-per-face grid. */
+/** Simulated ocean to display: gutter atlases on an n×n-per-face grid. */
 export interface OceanDisplay {
+  /** (η − η_rest, h, η, |u|). */
   texture: THREE.Texture
+  /** (max anomaly, arrival time s or −1, max inundation, ·). */
+  diagTexture: THREE.Texture
   n: number
 }
 
@@ -208,6 +213,29 @@ export function createGlobeMaterial(
     ground = select(s.water, waterTinted, ground)
   }
   ground = mix(ground, vec3(0.9, 0.93, 0.95), foam.mul(0.85))
+
+  if (ocean_) {
+    const dg = any(sampleFaceAtlas(ocean_.diagTexture, d, ocean_.n))
+    // Maximum wave height: log scale 2 cm … 5 m; five-stop ramp (blue → cyan → yellow → red →
+    // magenta), translucent at the low end so small values don't hide the ocean.
+    const hmax = any(max(dg.x, dg.z))
+    const tMax = saturate(hmax.div(0.02).log().div(Math.log(250)))
+    const stops = [vec3(0.15, 0.25, 0.85), vec3(0.1, 0.8, 0.9), vec3(1, 0.9, 0.25), vec3(0.95, 0.2, 0.1), vec3(0.85, 0.15, 0.85)]
+    const seg = (t: any, k: number) => saturate(t.mul(4).sub(k))
+    let ramp: any = stops[0]
+    for (let k = 1; k < 5; k++) ramp = mix(ramp, stops[k], seg(tMax, k - 1))
+    const alpha = select(hmax.greaterThan(0.02), mix(float(0.35), float(0.9), saturate(tMax.mul(2))), float(0))
+    const maxColor = mix(ground, ramp, alpha)
+    // Arrival time: hourly isochrones (constant pixel width) over a faint fill coloured by hour.
+    const hours = any(dg.y).div(3600)
+    const arrived = dg.y.greaterThanEqual(0)
+    const dist = any(abs(hours.fract().sub(0.5)).negate().add(0.5))
+    const line = float(1).sub(smoothstep(0, any(hours).fwidth().mul(1.5), dist))
+    const fill = mix(vec3(0.95, 0.85, 0.3), vec3(0.3, 0.45, 1), saturate(hours.div(24)))
+    const arrColor = select(arrived, mix(mix(ground, fill, 0.35), vec3(1), line.mul(0.9)), ground)
+    const mode = any(u.overlay)
+    ground = select(mode.equal(1), maxColor, select(mode.equal(2), arrColor, ground))
+  }
 
   // Clouds (on the surface, as in takram's Blue Marble example) with an offset shadow.
   const sun = any(sunDirection)
