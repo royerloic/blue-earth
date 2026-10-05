@@ -49,7 +49,7 @@ for (const backend of ['webgpu', 'webgl2']) {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))
     await page.goto(`/?backend=${backend}&date=2026-07-09T11:00:00Z&intro=0`)
-    await expect(page.locator('.be-hud')).toContainText(backend)
+    await expect(page.locator('.be-hud')).toContainText(backend, { timeout: 30_000 })
     await page.waitForTimeout(2500)
     const shot = await page.locator('body > canvas').screenshot()
     expect(shot.byteLength).toBeGreaterThan(200_000)

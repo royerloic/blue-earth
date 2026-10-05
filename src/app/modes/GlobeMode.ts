@@ -9,6 +9,8 @@ import { Atmosphere } from '../../render/atmosphere/atmosphere'
 import { createCubeSphere } from '../../render/globe/cubeSphere'
 import { createGlobeMaterial, GlobeUniforms } from '../../render/globe/globeMaterial'
 import { Hud } from '../../ui/hud'
+import { AutoTune } from '../../core/quality/autoTune'
+import { pickTier, rememberTier, type Tier } from '../../core/quality/tiers'
 import { OceanSim } from '../../sim/OceanSim'
 import { PRESETS } from '../../sim/presets/historical'
 import { GaugePanel, toast } from '../../ui/gauges'
@@ -26,7 +28,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   renderer.setSize(innerWidth, innerHeight)
   document.body.appendChild(renderer.domElement)
 
-  const tier = q.get('tier') ?? (matchMedia('(pointer: coarse)').matches ? 'low' : 'medium')
+  const tier = pickTier(backend, q)
   const data = await loadGlobeData(renderer, tier)
 
   const scene = new THREE.Scene()
@@ -203,6 +205,23 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   hud.select('Tsunami', [{ value: '', text: 'Historical event…' }, ...PRESETS.map((p) => ({ value: p.id, text: `${p.name} (${p.magnitude})` }))], runPreset)
   hud.root.appendChild(eventText)
   const simText = hud.text('Sim time')
+  const quality = hud.select(
+    'Quality',
+    [
+      { value: '', text: `Auto (now: ${tier})` },
+      { value: 'low', text: 'Low — 5 MB, 39 km sim cells' },
+      { value: 'medium', text: 'Medium — 19 MB, 20 km sim cells' },
+    ],
+    (v) => {
+      rememberTier((v || 'auto') as Tier | 'auto')
+      const u = new URL(location.href)
+      u.searchParams.delete('tier')
+      u.searchParams.set('intro', '0')
+      location.href = u.toString()
+    },
+  )
+  quality.value = localStorage.getItem('blue-earth.tier') ?? ''
+  const perfText = hud.text('Perf')
   hud.slider('Relief', 1, 50, 1, uniforms.exaggeration.value, (v) => `×${v}`, (v) => (uniforms.exaggeration.value = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
   const setDay = (doy: number) => {
@@ -286,10 +305,20 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   let gaugeBusy = false
   let gaugeT = -1
 
+  const tune = new AutoTune()
+  if (q.has('dpr')) tune.pixelRatio = Number(q.get('dpr'))
+  renderer.setPixelRatio(tune.pixelRatio)
+  let simRate = 0
+  let perfT = 0
+
   let last = performance.now()
   renderer.setAnimationLoop(() => {
     const now = performance.now()
     const dt = Math.min((now - last) / 1000, 0.1)
+    if (!q.has('dpr') && tune.update(now - last)) {
+      renderer.setPixelRatio(tune.pixelRatio)
+      renderer.setSize(innerWidth, innerHeight)
+    }
     last = now
     if (introT < INTRO) {
       introT += dt
@@ -320,7 +349,12 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       kioskDrop = 25
       sim.drop(sim.randomOceanPoint(), 30)
     }
-    const steps = sim.advance(dt, warp)
+    const steps = sim.advance(dt, warp, tune.maxSteps)
+    simRate += ((steps * sim.dt) / Math.max(dt, 1e-3) - simRate) * 0.05
+    if ((perfT += dt) > 0.5) {
+      perfT = 0
+      perfText.textContent = `${(1000 / tune.frameMs).toFixed(0)} fps · render ×${tune.pixelRatio.toFixed(2)} · sim ×${simRate.toFixed(0)}${tune.maxSteps < 4 ? ' (capped)' : ''}`
+    }
     if (oscillating() && steps > 0) {
       // Source η = A·sin(2πt/T): add its increment over this frame's simulated time.
       const T = 600

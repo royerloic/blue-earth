@@ -1,0 +1,7 @@
+<!doctype html><script type="module">
+const a = await navigator.gpu?.requestAdapter()
+const info = a ? a.info ?? (await a.requestAdapterInfo?.()) : null
+const gl = document.createElement('canvas').getContext('webgl2')
+const dbg = gl?.getExtension('WEBGL_debug_renderer_info')
+console.log('GPUINFO', JSON.stringify({ webgpu: !!a, vendor: info?.vendor, arch: info?.architecture, device: info?.device, desc: info?.description, webgl: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null }))
+</script>
