@@ -117,9 +117,15 @@ export function buildCubeGrid(N: number, R: number): CubeGrid {
       while (m < 4 && nb[o * 4 + m] !== c) m++
       if (m === 4) throw new Error(`cube grid: neighbour ${o} of ${c} does not link back`)
       back[c * 4 + k] = m
-      lenOverArea[c * 4 + k] = edgeLength[c * 4 + k] / (solidAngle[c] * R * R)
+      // Make the shared edge exactly antisymmetric (the lower id is canonical), so fluxes
+      // computed from either side cancel bit-for-bit.
+      if (o < c) {
+        for (let q = 0; q < 3; q++) normal[(c * 4 + k) * 3 + q] = -normal[(o * 4 + m) * 3 + q]
+        edgeLength[c * 4 + k] = edgeLength[o * 4 + m]
+      }
     }
   }
+  for (let e = 0; e < cells * 4; e++) lenOverArea[e] = edgeLength[e] / (solidAngle[e >> 2] * R * R)
   return { N, cells, center, solidAngle, nb, back, normal, lenOverArea, edgeLength }
 }
 
