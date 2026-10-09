@@ -323,7 +323,10 @@ export class SWESolver {
         const cosA = c.dot(d.xyz)
         // Gaussian in chord distance, |c − d|² = 2(1 − cos a) ≈ a² for σ ≪ 1 rad.
         const sg = any(this.impulseSigma[k])
-        const g = float(1).sub(cosA).mul(2).div(sg.mul(sg)).negate().exp()
+        // Volume-neutral "Mexican hat": crest minus a trough twice as wide with the same volume
+        // (∫ = 0 in the small-angle limit), so drops don't raise the level of closed seas.
+        const r2 = float(1).sub(cosA).mul(2).div(sg.mul(sg))
+        const g = r2.negate().exp().sub(r2.mul(-0.25).exp().mul(0.25))
         const on = float(k).lessThan(this.impulseCount).and(cosA.greaterThan(0))
         eta = eta.add(select(on, d.w.mul(g), float(0)))
       }
@@ -453,7 +456,8 @@ export class SWESolver {
       if (stage === 2) {
         const hs = max(h, P.hDry)
         const speed = m.length().div(hs)
-        const d = float(1).add(dt.mul(g).mul(any(this.manning)).mul(this.manning).mul(speed).div(hs.pow(4 / 3)))
+        const lin = P.dampingTime > 0 ? 1 / P.dampingTime : 0
+        const d = float(1).add(dt.mul(lin)).add(dt.mul(g).mul(any(this.manning)).mul(this.manning).mul(speed).div(hs.pow(4 / 3)))
         m = m.div(d)
       }
       m = select(h.lessThan(P.hDry), vec3(0, 0, 0), m)

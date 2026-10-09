@@ -203,7 +203,7 @@ export class OceanSim {
   }
 
   /** Drops a Gaussian wave (amplitude m, radius in cells) at an ECEF point. */
-  drop(p: THREE.Vector3, amplitude = 20, radiusCells = 3) {
+  drop(p: THREE.Vector3, amplitude = 20, radiusCells = 5) {
     const d = p.clone().normalize()
     console.log(`drop ${amplitude} m at ${d.toArray().map((v) => v.toFixed(3))}`)
     this.solver.addImpulse({ dir: [d.x, d.y, d.z], amplitude, sigma: (radiusCells * Math.PI) / 2 / this.N })

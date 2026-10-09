@@ -23,10 +23,12 @@ export interface SWEParams {
   uMax: number
   /** Manning coefficient (s/m^(1/3)); 0 disables friction. */
   manning: number
+  /** Linear momentum damping e-folding time (s), so old sloshing dies out; 0 disables. */
+  dampingTime: number
   coriolis: boolean
 }
 
-export const DEFAULT_PARAMS: SWEParams = { g: 9.81, omega: 7.2921e-5, hDry: 1e-3, hEps: 0.05, uMax: 30, manning: 0.025, coriolis: true }
+export const DEFAULT_PARAMS: SWEParams = { g: 9.81, omega: 7.2921e-5, hDry: 1e-3, hEps: 0.05, uMax: 30, manning: 0.025, dampingTime: 86_400, coriolis: true }
 
 export const minmod = (a: number, b: number) => (a * b <= 0 ? 0 : Math.abs(a) < Math.abs(b) ? a : b)
 /** Monotonized-central limiter (van Leer 1977): far less crest clipping than minmod. */
@@ -248,13 +250,14 @@ export function postProcess(g: CubeGrid, B: Float64Array, eta: Float64Array, m: 
 
 /** Semi-implicit Manning friction: m ← m / (1 + dt·g·n²·|u| / h^{4/3}). */
 export function friction(B: Float64Array, eta: Float64Array, m: Float64Array, dt: number, p: SWEParams) {
-  if (p.manning <= 0) return
+  const lin = p.dampingTime > 0 ? dt / p.dampingTime : 0
+  if (p.manning <= 0 && lin === 0) return
   const k = p.g * p.manning * p.manning
   for (let c = 0; c < B.length; c++) {
     const h = eta[c] - B[c]
     if (h < p.hDry) continue
     const sp = Math.hypot(m[c * 3], m[c * 3 + 1], m[c * 3 + 2]) / h
-    const d = 1 + (dt * k * sp) / h ** (4 / 3)
+    const d = 1 + lin + (dt * k * sp) / h ** (4 / 3)
     m[c * 3] /= d
     m[c * 3 + 1] /= d
     m[c * 3 + 2] /= d

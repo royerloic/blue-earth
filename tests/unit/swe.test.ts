@@ -3,7 +3,7 @@ import { buildCubeGrid, type CubeGrid } from '../../src/sim/grid'
 import { CpuSWE, DEFAULT_PARAMS, stableDt } from '../../src/sim/swe'
 
 const R = 6_371_000
-const noFriction = { ...DEFAULT_PARAMS, manning: 0, coriolis: false }
+const noFriction = { ...DEFAULT_PARAMS, manning: 0, dampingTime: 0, coriolis: false }
 
 function rng(seed: number) {
   let s = seed

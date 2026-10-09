@@ -197,12 +197,17 @@ export function createGlobeMaterial(
   const gy = gy0.mul(soft)
   const terrainNormal = d.sub(east.mul(gx)).sub(north.mul(gy)).normalize()
   let waterNormal: any = d
+  let waveSlope: any = float(0)
   if (ocean_) {
     // Wave slopes from the simulated η at ±1 sim cell, with a shading gain.
     const ds = Math.PI / 2 / ocean_.n
     // Slope of the wave anomaly only: the still level jumps at coasts (it is the land height
     // there), which would tilt water normals wherever a coarse land cell is nearby.
-    const ev = (dir: any) => surface(dir.normalize()).anomaly
+    // Sim texture only (no terrain lookups): 4 bilinear fetches per neighbour, not a full surface().
+    const ev = (dir: any) => {
+      const sm = simAt(dir.normalize())
+      return select(sm.y.greaterThan(0.05), sm.x, float(0)) as any
+    }
     const ws = any(u.waveNormalGain).div(2 * ds * EARTH_RADIUS)
     const wx = ev(d.add(east.mul(ds))).sub(ev(d.sub(east.mul(ds)))).mul(ws)
     const wy = ev(d.add(north.mul(ds))).sub(ev(d.sub(north.mul(ds)))).mul(ws)
@@ -210,6 +215,7 @@ export function createGlobeMaterial(
     const tilt = vec3(wx, wy, 0) as any
     const lim = min(float(1), float(0.6).div(max(tilt.length(), 1e-6)))
     waterNormal = d.sub(east.mul(wx.mul(lim))).sub(north.mul(wy.mul(lim))).normalize()
+    waveSlope = saturate(tilt.length().div(0.6))
   }
   // At (near) today's sea level the 500 m tile mask defines the coastline.
   const seaToday = abs(any(u.seaLevel)).lessThan(0.5)
@@ -261,13 +267,17 @@ export function createGlobeMaterial(
   const runup = select(s.inundated, saturate(any(s.speed).div(2)).mul(saturate(float(1).sub(s.depth.div(4)))), float(0))
   const foam = (debug ?? '').includes('nofoam') ? float(0) : saturate(breaking.add(runup)).toConst()
   if (ocean_ && !(debug ?? '').includes('notint')) {
-    // Make waves legible from orbit: crests lighten toward sea-foam blue, troughs deepen.
+    // Make waves legible from orbit in the water's own colour: crests lift the local sea colour
+    // (lighter, slightly greener: thinner-looking water), troughs deepen it, and steep fronts
+    // catch a fine bright edge. Soft saturation a/(a + 0.25 m) keeps 5 cm–50 m waves graded.
     const an = any(s.eta.sub(s.still))
-    // Soft saturation a/(a + 0.4 m): half strength at 0.4 m, still graded for 50 m waves.
-    const soft = (x: any) => max(x, 0).div(max(x, 0).add(0.4))
-    const crest = soft(an).mul(u.waveTint)
-    const trough = soft(an.negate()).mul(u.waveTint)
-    const waterTinted = mix(mix(ground, vec3(0.45, 0.75, 0.9), saturate(crest.mul(0.6))), ground.mul(0.25), saturate(trough.mul(0.7)))
+    const soft = (x: any) => max(x, 0).div(max(x, 0).add(0.25))
+    const crest = saturate(soft(an).mul(u.waveTint))
+    const trough = saturate(soft(an.negate()).mul(u.waveTint))
+    const lifted = ground.mul(1.5).add(vec3(0.08, 0.17, 0.2))
+    let waterTinted: any = mix(ground, lifted, crest)
+    waterTinted = mix(waterTinted, ground.mul(0.3), trough.mul(0.75))
+    waterTinted = mix(waterTinted, vec3(0.55, 0.7, 0.78), waveSlope.mul(waveSlope).mul(u.waveTint).mul(0.25))
     ground = select(s.water, waterTinted, ground)
   }
   ground = mix(ground, vec3(0.9, 0.93, 0.95), foam.mul(0.85))
