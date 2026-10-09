@@ -270,7 +270,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const perfText = hud.text('Perf')
   // Relief exaggeration as set for orbital views; it fades toward ×1.5 as the camera comes
   // down (at 200 km a ×15 Alps would be 70 km tall).
-  let reliefSetting = uniforms.exaggeration.value
+  let reliefSetting = Number(q.get('relief') ?? uniforms.exaggeration.value)
   hud.slider('Relief', 1, 50, 1, reliefSetting, (v) => `×${v}`, (v) => (reliefSetting = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
   const setDay = (doy: number) => {

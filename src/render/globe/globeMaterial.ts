@@ -86,7 +86,7 @@ export function createGlobeMaterial(
   tiles?: { texture: THREE.Texture; size: number; maskMin: number },
 ): THREE.MeshPhysicalNodeMaterial {
   const { n, gutter } = data
-  const ocean_ = ocean
+  const ocean_ = (debug ?? '').includes('nosim') ? undefined : ocean
   const terrainAt = (d: Node) => any(sampleEACArray(data.terrain, d, n, gutter, false))
   const simAt = (d: Node) => any(sampleFaceAtlas(ocean!.texture, d, ocean!.n))
 
@@ -149,9 +149,11 @@ export function createGlobeMaterial(
   const w = any(u.monthWeights)
   const month = (k: string) => any(sampleEACArray(data.albedo[k], d, n, gutter)).rgb
   let albedo: any = month('01').mul(w.x).add(month('04').mul(w.y)).add(month('07').mul(w.z)).add(month('10').mul(w.w))
-  // 500 m tiles (July): add their detail as a ratio to the global July albedo, so the date's
+  // 500 m tiles (July): tile colour plus the seasonal change of the global albedo, so the date's
   // seasonal colours stay and tiled/untiled patches meet without seams.
   let tileMask: any = null
+  let tileRGB: any = null
+  let tileUV: any = null
   let tileOn: any = float(0).greaterThan(1)
   if (lod && tiles) {
     const tl = any(lod.tile)
@@ -160,8 +162,18 @@ export function createGlobeMaterial(
     // Patch uv → tile uv (ancestor sub-rect), inset by half a texel so edges hit texel centres.
     const tuv = any(lod.uv).mul(tl.y).add(tl.zw).mul((n - 1) / n).add(0.5 / n)
     const tex = any(texture(tiles.texture, tuv)).depth(max(tl.x, 0))
-    const ratio = any(tex.rgb).div(max(month('07'), vec3(0.015))).clamp(0.3, 3)
-    albedo = select(tileOn, albedo.mul(ratio), albedo)
+    tileRGB = tex.rgb
+    tileUV = tuv
+    // Season as an additive difference (date's month − July), not a ratio: near coasts the 5 km
+    // global colour and the 500 m tile disagree on land/water, where a ratio explodes (dark
+    // fringes / grey ghosts); the difference stays near 0 there.
+    // Only where tile and global agree on land/water: across coastline mismatches the global
+    // map's seasonal change belongs to the other class (land colour onto sea → ghosts).
+    const tLand = saturate(any(tex.a).mul(255).sub(tiles.maskMin).div(255 - tiles.maskMin)).greaterThan(0.5)
+    const cLand = any(s.water).not()
+    const agree = tLand.and(cLand).or(tLand.not().and(cLand.not()))
+    const seasonal = select(agree, albedo.sub(month('07')), vec3(0))
+    albedo = select(tileOn, max(any(tex.rgb).add(seasonal), vec3(0)), albedo)
     tileMask = saturate(any(tex.a).mul(255).sub(tiles.maskMin).div(255 - tiles.maskMin))
   }
 
@@ -180,7 +192,9 @@ export function createGlobeMaterial(
   if (ocean_) {
     // Wave slopes from the simulated η at ±1 sim cell, with a shading gain.
     const ds = Math.PI / 2 / ocean_.n
-    const ev = (dir: any) => surface(dir.normalize()).eta
+    // Slope of the wave anomaly only: the still level jumps at coasts (it is the land height
+    // there), which would tilt water normals wherever a coarse land cell is nearby.
+    const ev = (dir: any) => surface(dir.normalize()).anomaly
     const ws = any(u.waveNormalGain).div(2 * ds * EARTH_RADIUS)
     const wx = ev(d.add(east.mul(ds))).sub(ev(d.sub(east.mul(ds)))).mul(ws)
     const wy = ev(d.add(north.mul(ds))).sub(ev(d.sub(north.mul(ds)))).mul(ws)
@@ -231,8 +245,8 @@ export function createGlobeMaterial(
   // Foam: breaking waves (amplitude large relative to depth) and fast shallow run-up.
   const breaking = saturate(any(s.anomaly).div(max(s.depth, 1)).sub(0.15).mul(4))
   const runup = select(s.inundated, saturate(any(s.speed).div(2)).mul(saturate(float(1).sub(s.depth.div(4)))), float(0))
-  const foam = saturate(breaking.add(runup)).toConst()
-  if (ocean_) {
+  const foam = (debug ?? '').includes('nofoam') ? float(0) : saturate(breaking.add(runup)).toConst()
+  if (ocean_ && !(debug ?? '').includes('notint')) {
     // Make waves legible from orbit: crests lighten toward sea-foam blue, troughs deepen.
     const an = any(s.eta.sub(s.still))
     // Soft saturation a/(a + 0.4 m): half strength at 0.4 m, still graded for 50 m waves.
@@ -294,6 +308,22 @@ export function createGlobeMaterial(
   if (flags.has('nonormal')) material.normalNode = null
   if (flags.has('nodisp')) material.positionNode = dirGeom.mul(EARTH_RADIUS)
   if (flags.has('rough')) material.roughnessNode = float(0.1)
+  const unlit = (c: any) => {
+    material.colorNode = vec4(0, 0, 0, 1)
+    material.emissiveNode = c
+  }
+  if (flags.has('tile') && tileRGB) unlit(select(tileOn, tileRGB, vec3(1, 0, 1)))
+  if (flags.has('layer') && lod) unlit(vec3(any(lod.tile).x.div(128), any(lod.tile).y.div(2), any(lod.tile).x.lessThan(0).select(float(1), float(0))))
+  if (flags.has('tileuv') && tileUV) unlit(vec3(tileUV, 0))
+  if (flags.has('class') && tileMask) {
+    // red: coarse land / tile water · green: coarse water / tile land · blue: both water · grey: both land
+    const cw = any(s.wet)
+    const tw = tileMask.lessThan(0.5)
+    material.colorNode = vec4(
+      select(cw.and(tw), vec3(0.1, 0.2, 0.9), select(cw, vec3(0.1, 0.9, 0.1), select(tw, vec3(0.9, 0.1, 0.1), vec3(0.5)))),
+      1,
+    )
+  }
   if (flags.has('wave')) {
     // Red = crest, blue = trough, saturating at ±0.5 m.
     const a = saturate(any(s.eta.sub(s.still)).div(0.5))

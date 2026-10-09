@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu'
-import { attribute } from 'three/tsl'
+import { attribute, varying } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { faceSTDirection, faceSTToDirection } from '../../core/geo/cubeEAC'
 
@@ -53,13 +53,22 @@ export class LodSphere {
       dir: faceSTDirection(pa.x, s, t),
       skirt: uvs.z as Node,
       patchSize: pa.w as Node,
-      uv: uvs.xy as Node,
-      tile: attribute('lodTile', 'vec4') as Node,
+      // Explicit varyings: an instance attribute read only through an implicit fragment varying
+      // is uploaded once but not refreshed by three r184 (not in the render object's attributes).
+      uv: varying(uvs.xy, 'vLodUV') as Node,
+      tile: varying(attribute('lodTile', 'vec4'), 'vLodTile') as Node,
     }
   }
 
   /** Re-selects patches for the camera (ECEF, metres) and radius R. */
+  private readonly frustum = new THREE.Frustum()
+  private readonly projView = new THREE.Matrix4()
+  private readonly sphere = new THREE.Sphere()
+
   update(camera: THREE.Camera, R: number) {
+    camera.updateMatrixWorld()
+    this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    this.frustum.setFromProjectionMatrix(this.projView, camera.coordinateSystem)
     const cam = camera.position
     const D = cam.length()
     const camDir = cam.clone().divideScalar(D)
@@ -72,6 +81,11 @@ export class LodSphere {
       const ang = Math.acos(Math.max(-1, Math.min(1, c[0] * camDir.x + c[1] * camDir.y + c[2] * camDir.z)))
       const rho = (Math.PI / 2) * size * 0.75 // angular radius of the patch
       if (ang > horizon + rho + 0.05) return // behind the horizon
+      // Outside the view: not drawn and, importantly, requests no 500 m tiles. The bounding
+      // sphere covers the patch plus exaggerated relief (≤ ~150 km).
+      this.sphere.center.set(c[0] * R, c[1] * R, c[2] * R)
+      this.sphere.radius = R * rho * 1.2 + 150_000
+      if (!this.frustum.intersectsSphere(this.sphere)) return
       const width = R * (Math.PI / 2) * size
       const dist = Math.hypot(c[0] * R - cam.x, c[1] * R - cam.y, c[2] * R - cam.z)
       const split = level < this.minLevel || (level < this.maxLevel && dist < this.splitFactor * width)
