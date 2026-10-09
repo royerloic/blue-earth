@@ -8,6 +8,7 @@ import { celestialAt, monthWeights } from '../../core/time/solar'
 import { Atmosphere } from '../../render/atmosphere/atmosphere'
 import { createCubeSphere } from '../../render/globe/cubeSphere'
 import { LodSphere } from '../../render/globe/lodSphere'
+import { MASK_ALPHA_MIN, TileCache } from '../../render/globe/tileCache'
 import { createGlobeMaterial, GlobeUniforms } from '../../render/globe/globeMaterial'
 import { Hud } from '../../ui/hud'
 import { AutoTune } from '../../core/quality/autoTune'
@@ -60,10 +61,30 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   // Chunked-LOD globe (default) or the fixed 6×256² cube-sphere (?lod=0).
   const useLod = q.get('lod') !== '0'
   const lodNodes = useLod ? LodSphere.nodes() : undefined
-  const makeMaterial = (d: typeof first) => createGlobeMaterial(d, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug'), lodNodes)
+  // 500 m close-zoom imagery tiles (streamed; Medium/High tiers with the LOD mesh, ?tiles=0 off).
+  const tiles =
+    useLod && tier !== 'low' && q.get('tiles') !== '0'
+      ? await TileCache.load(`${import.meta.env.VITE_ASSET_BASE ?? import.meta.env.BASE_URL}data/`)
+      : null
+  const tileInput = tiles ? { texture: tiles.texture, size: tiles.size, maskMin: MASK_ALPHA_MIN } : undefined
+  const makeMaterial = (d: typeof first) =>
+    createGlobeMaterial(d, uniforms, atmosphere.context.sunDirectionECEF, oceanDisplay, q.get('debug'), lodNodes, tileInput)
   const maxLevel = (n: number) => Math.round(Math.log2(n / 32))
   const lod = useLod ? new LodSphere(makeMaterial(first), 3, maxLevel(progressive ? data.n : first.n)) : null
   const globe: THREE.Mesh = lod ? lod.mesh : new THREE.Mesh(createCubeSphere(256), makeMaterial(first))
+  if (lod && tiles)
+    lod.tileFor = (face, s0, t0, size, level) => {
+      // The patch's own tile level, else the nearest existing/loaded ancestor (sub-rect).
+      for (let tl = Math.min(level, tiles.maxLevel); tl >= tiles.minLevel; tl--) {
+        const n = 2 ** tl
+        const i = Math.floor(s0 * n + 1e-9)
+        const j = Math.floor(t0 * n + 1e-9)
+        if (!tiles.exists(tl, face, j, i)) continue
+        const layer = tiles.layer(tl, face, j, i)
+        if (layer >= 0) return [layer, size * n, s0 * n - i, t0 * n - j]
+      }
+      return [-1, 1, 0, 0]
+    }
   if (progressive)
     void loadGlobeData(renderer, tier, undefined, { sim: data.sim }).then((full) => {
       const old = globe.material as THREE.Material
@@ -80,7 +101,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   controls.enableDamping = true
   controls.enablePan = false
   // Closest zoom follows the imagery resolution (and needs the LOD mesh).
-  controls.minDistance = EARTH_RADIUS + (useLod ? { low: 400_000, medium: 300_000, high: 300_000 }[tier] ?? 400_000 : 400_000)
+  controls.minDistance = EARTH_RADIUS + (tiles ? 80_000 : useLod ? { low: 400_000, medium: 300_000, high: 300_000 }[tier] ?? 400_000 : 400_000)
   controls.maxDistance = EARTH_RADIUS * 12
 
   // --- Sun & time ---------------------------------------------------------------------
@@ -382,7 +403,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     simRate += ((steps * sim.dt) / Math.max(dt, 1e-3) - simRate) * 0.05
     if ((perfT += dt) > 0.5) {
       perfT = 0
-      perfText.textContent = `${(1000 / tune.frameMs).toFixed(0)} fps · render ×${tune.pixelRatio.toFixed(2)} · sim ×${simRate.toFixed(0)}${tune.maxSteps < 4 ? ' (capped)' : ''}`
+      perfText.textContent = `${(1000 / tune.frameMs).toFixed(0)} fps · render ×${tune.pixelRatio.toFixed(2)} · sim ×${simRate.toFixed(0)}${tune.maxSteps < 4 ? ' (capped)' : ''}${tiles ? ` · 500 m tiles ${tiles.loaded}` : ''}`
     }
     if (oscillating() && steps > 0) {
       // Source η = A·sin(2πt/T): add its increment over this frame's simulated time.
@@ -414,6 +435,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     controls.rotateSpeed = Math.min(1, Math.max(0.05, (dist - EARTH_RADIUS) / (EARTH_RADIUS * 3)))
     controls.update()
     if (lod) lod.update(camera, EARTH_RADIUS)
+    tiles?.update()
     const altKm = (camera.position.length() - EARTH_RADIUS) / 1000
     const k = Math.min(1, Math.max(0, (altKm - 200) / 2800))
     uniforms.exaggeration.value = 1.5 + (reliefSetting - 1.5) * k * k * (3 - 2 * k)

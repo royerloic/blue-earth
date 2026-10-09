@@ -14,7 +14,8 @@ A physically based, real-time web remake of *Blue Earth*, Loic Royer's 2004 Java
   fault sources (validated against Okada's DC3D). Modelled arrival times match observations;
   maximum-height and arrival-time maps; virtual tide gauges.
 - **Beautiful.** Bruneton/Hillaire atmosphere (takram), Cox–Munk sun glint, depth absorption, foam,
-  monthly Blue Marble imagery, city lights, clouds, AgX tone mapping, a chunked-LOD globe.
+  monthly Blue Marble imagery, city lights, clouds, AgX tone mapping, a chunked-LOD globe, and
+  **close zoom to 80 km** with streamed 500 m imagery tiles and sharp coastlines.
 - **The original, bit-exact.** *Classic 2004* mode runs the 2004 algorithm on the GPU, pixel-identical
   to the Java original (checked against frames produced by the original code).
 
@@ -29,7 +30,8 @@ npm install
 npm run dev                                                           # http://localhost:5173
 ```
 Needs WebGPU (Chrome/Edge, Safari 26, Firefox 141+ on Windows/macOS). Other browsers fall back to
-WebGL2, which also runs the full simulation. The High tier needs `... build high` (~3 min).
+WebGL2, which also runs the full simulation. The High tier needs `... build high` (~3 min). Close-zoom tiles
+need `uv run python -m blueearth_pipeline.tiles` (~4 min, downloads 350 MB).
 
 ## Controls (globe)
 | Input | Action |

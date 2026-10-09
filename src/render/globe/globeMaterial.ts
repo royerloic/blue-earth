@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu'
 import {
   abs,
   min,
+  texture,
   cameraViewMatrix,
   cross,
   float,
@@ -80,7 +81,9 @@ export function createGlobeMaterial(
   ocean?: OceanDisplay,
   debug?: string | null,
   /** Vertex-stage geometry: unit direction, skirt flag and patch size (LOD mesh). */
-  lod?: { dir: Node; skirt: Node; patchSize: Node },
+  lod?: { dir: Node; skirt: Node; patchSize: Node; uv: Node; tile: Node },
+  /** 500 m imagery tiles (texture array), addressed per LOD patch. */
+  tiles?: { texture: THREE.Texture; size: number; maskMin: number },
 ): THREE.MeshPhysicalNodeMaterial {
   const { n, gutter } = data
   const ocean_ = ocean
@@ -142,6 +145,27 @@ export function createGlobeMaterial(
   const d = any(varying(dirGeom, 'vGlobeDir')).normalize()
   const s = surface(d)
 
+  // Albedo: month blend.
+  const w = any(u.monthWeights)
+  const month = (k: string) => any(sampleEACArray(data.albedo[k], d, n, gutter)).rgb
+  let albedo: any = month('01').mul(w.x).add(month('04').mul(w.y)).add(month('07').mul(w.z)).add(month('10').mul(w.w))
+  // 500 m tiles (July): add their detail as a ratio to the global July albedo, so the date's
+  // seasonal colours stay and tiled/untiled patches meet without seams.
+  let tileMask: any = null
+  let tileOn: any = float(0).greaterThan(1)
+  if (lod && tiles) {
+    const tl = any(lod.tile)
+    tileOn = tl.x.greaterThanEqual(0)
+    const n = tiles.size
+    // Patch uv → tile uv (ancestor sub-rect), inset by half a texel so edges hit texel centres.
+    const tuv = any(lod.uv).mul(tl.y).add(tl.zw).mul((n - 1) / n).add(0.5 / n)
+    const tex = any(texture(tiles.texture, tuv)).depth(max(tl.x, 0))
+    const ratio = any(tex.rgb).div(max(month('07'), vec3(0.015))).clamp(0.3, 3)
+    albedo = select(tileOn, albedo.mul(ratio), albedo)
+    tileMask = saturate(any(tex.a).mul(255).sub(tiles.maskMin).div(255 - tiles.maskMin))
+  }
+
+
   // Height-derived normal from ±1 texel samples along a local east/north frame.
   const ref = select(abs(d.z).greaterThan(0.99), vec3(1, 0, 0), vec3(0, 0, 1))
   const east = any(cross(ref, d)).normalize()
@@ -165,15 +189,13 @@ export function createGlobeMaterial(
     const lim = min(float(1), float(0.6).div(max(tilt.length(), 1e-6)))
     waterNormal = d.sub(east.mul(wx.mul(lim))).sub(north.mul(wy.mul(lim))).normalize()
   }
-  const normalWorldN = select(s.wet, waterNormal, terrainNormal)
+  // At (near) today's sea level the 500 m tile mask defines the coastline.
+  const seaToday = abs(any(u.seaLevel)).lessThan(0.5)
+  const wetF: any = tileMask ? select(tileOn.and(seaToday), tileMask.lessThan(0.5).or(s.inundated), s.wet) : s.wet
+  const normalWorldN = select(wetF, waterNormal, terrainNormal)
   // normalNode is view space. (TSL's n.transformDirection(cameraViewMatrix) is the inverse,
   // view → world, as used in three's Normal.js.)
   material.normalNode = any(cameraViewMatrix).mul(vec4(any(normalWorldN), 0)).xyz.normalize()
-
-  // Albedo: month blend.
-  const w = any(u.monthWeights)
-  const month = (k: string) => any(sampleEACArray(data.albedo[k], d, n, gutter)).rgb
-  const albedo = month('01').mul(w.x).add(month('04').mul(w.y)).add(month('07').mul(w.z)).add(month('10').mul(w.w))
 
   // Water optics. Light reaching the bottom and back is absorbed per channel over 2·depth
   // (red first), then the deep-water colour takes over (Beer–Lambert with a scattering colour).
@@ -257,7 +279,7 @@ export function createGlobeMaterial(
   // Water roughness from the wind (Cox–Munk, set by GlobeUniforms.setWind); foam, land and
   // clouds are rough.
   const waterRough = mix(float(u.waterRoughness as never), float(0.9), foam)
-  material.roughnessNode = mix(select(s.wet, waterRough, float(0.95)), float(1), clouds)
+  material.roughnessNode = mix(select(wetF, waterRough, float(0.95)), float(1), clouds)
 
   // Night lights: dry land only, behind the terminator, dimmed by clouds.
   const night = any(sampleEACArray(data.night, d, n, gutter)).rgb
@@ -266,7 +288,7 @@ export function createGlobeMaterial(
     .mul(night)
     .mul(dark)
     .mul(float(1).sub(clouds.mul(0.8)))
-    .mul(select(s.wet, float(0), float(1)))
+    .mul(select(wetF, float(0), float(1)))
     .mul(u.nightIntensity)
   const flags = new Set((debug ?? '').split(','))
   if (flags.has('nonormal')) material.normalNode = null

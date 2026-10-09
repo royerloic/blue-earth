@@ -28,6 +28,14 @@ SOURCES: dict[str, dict[str, str]] = {
         }
         for m, name in MONTHS.items()
     },
+    # 500 m Blue Marble (July): 8 tiles of 90°×90° (A–D west→east, 1 north / 2 south).
+    **{
+        f"bmng500_07_{t}": {
+            "url": f"{NASA}/images/bmng/bmng-base/july/world.200407.3x21600x21600.{t}.jpg",
+            "credit": "NASA Earth Observatory, Blue Marble Next Generation (R. Stöckli)",
+        }
+        for t in ["A1", "A2", "B1", "B2", "C1", "C2", "D1", "D2"]
+    },
     "black_marble": {
         "url": f"{NASA}/images/imagerecords/144000/144898/BlackMarble_2016_3km.jpg",
         "credit": "NASA Earth Observatory / GSFC, Black Marble 2016 (M. Román et al.)",

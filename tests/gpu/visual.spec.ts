@@ -32,8 +32,8 @@ test.describe('visual regression', () => {
           s.dispatchEvent(new Event('input'))
         })
       }
-      await page.waitForTimeout(2500)
-      await expect(page.locator('body > canvas')).toHaveScreenshot(`${name}.png`, { maxDiffPixelRatio: 0.02, threshold: 0.15 })
+      await page.waitForTimeout(4000)
+      await expect(page.locator('body > canvas')).toHaveScreenshot(`${name}.png`, { maxDiffPixelRatio: 0.02, threshold: 0.15, timeout: 15_000 })
     })
   }
 })

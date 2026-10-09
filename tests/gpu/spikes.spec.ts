@@ -114,6 +114,19 @@ test('progressive start: Low imagery first, then upgraded to Medium', async ({ p
   await expect(page.locator('.be-hud .tier')).toHaveText('tier medium')
 })
 
+test('close zoom streams 500 m tiles', async ({ page }) => {
+  test.skip(!existsSync('public/data/tiles/index.json'), 'needs tiles (uv run python -m blueearth_pipeline.tiles)')
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  await page.goto('/?tier=high&progressive=0&intro=0&clouds=0&lat=46.2&lon=8.5&alt=150')
+  // The Perf line reports how many tiles have been uploaded.
+  await expect
+    .poll(async () => Number((await page.locator('.be-hud').textContent())?.match(/500 m tiles (\d+)/)?.[1] ?? 0), { timeout: 30_000 })
+    .toBeGreaterThan(10)
+  expect(errors).toEqual([])
+})
+
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
   await page.route('**/data/manifest.json', (r) => r.fulfill({ status: 404, body: 'nope' }))
   await page.goto('/')

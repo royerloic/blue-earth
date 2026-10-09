@@ -18,7 +18,11 @@ const MAX_PATCHES = 6000
 export class LodSphere {
   readonly mesh: THREE.InstancedMesh
   private readonly patch: THREE.InstancedBufferAttribute
+  /** Per patch: (tile layer or −1, uv scale, uv offset s, uv offset t) into the tile cache. */
+  private readonly tile: THREE.InstancedBufferAttribute
   count = 0
+  /** Returns the tile for a patch: [layer, scale, offS, offT] (layer −1 = none). */
+  tileFor: ((face: number, s0: number, t0: number, size: number, level: number) => [number, number, number, number]) | null = null
 
   constructor(
     material: THREE.Material,
@@ -31,18 +35,27 @@ export class LodSphere {
     this.patch = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PATCHES * 4), 4)
     this.patch.setUsage(THREE.DynamicDrawUsage)
     geometry.setAttribute('lodPatch', this.patch)
+    this.tile = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PATCHES * 4).fill(-1), 4)
+    this.tile.setUsage(THREE.DynamicDrawUsage)
+    geometry.setAttribute('lodTile', this.tile)
     this.mesh = new THREE.InstancedMesh(geometry, material, MAX_PATCHES)
     this.mesh.frustumCulled = false
     this.mesh.count = 0
   }
 
   /** TSL accessors for the material's vertex stage. */
-  static nodes(): { dir: Node; skirt: Node; patchSize: Node } {
+  static nodes(): { dir: Node; skirt: Node; patchSize: Node; uv: Node; tile: Node } {
     const uvs = attribute('lodGrid', 'vec3') as any
     const pa = attribute('lodPatch', 'vec4') as any
     const s = pa.y.add(uvs.x.mul(pa.w))
     const t = pa.z.add(uvs.y.mul(pa.w))
-    return { dir: faceSTDirection(pa.x, s, t), skirt: uvs.z as Node, patchSize: pa.w as Node }
+    return {
+      dir: faceSTDirection(pa.x, s, t),
+      skirt: uvs.z as Node,
+      patchSize: pa.w as Node,
+      uv: uvs.xy as Node,
+      tile: attribute('lodTile', 'vec4') as Node,
+    }
   }
 
   /** Re-selects patches for the camera (ECEF, metres) and radius R. */
@@ -52,6 +65,7 @@ export class LodSphere {
     const camDir = cam.clone().divideScalar(D)
     const horizon = Math.acos(Math.min(1, R / D))
     const arr = this.patch.array as Float32Array
+    const tiles = this.tile.array as Float32Array
     let n = 0
     const visit = (face: number, s0: number, t0: number, size: number, level: number) => {
       const c = faceSTToDirection(face, s0 + size / 2, t0 + size / 2)
@@ -69,6 +83,7 @@ export class LodSphere {
         visit(face, s0 + h, t0 + h, h, level + 1)
       } else if (n < MAX_PATCHES) {
         arr.set([face, s0, t0, size], n * 4)
+        tiles.set(this.tileFor ? this.tileFor(face, s0, t0, size, level) : [-1, 1, 0, 0], n * 4)
         n++
       }
     }
@@ -78,6 +93,9 @@ export class LodSphere {
     this.patch.clearUpdateRanges()
     this.patch.addUpdateRange(0, n * 4)
     this.patch.needsUpdate = true
+    this.tile.clearUpdateRanges()
+    this.tile.addUpdateRange(0, n * 4)
+    this.tile.needsUpdate = true
   }
 }
 

@@ -15,7 +15,8 @@ env:
   DATA_TAG: data-v1
   # Tiers served from Pages (1 GB site / 100 GB-month bandwidth soft limit). To move High (61 MB)
   # to a CDN later: set VITE_ASSET_BASE and drop "high" here.
-  PAGES_TIERS: low medium high
+  # "tiles" = the 500 m close-zoom imagery (52 MB, fetched on demand by the client).
+  PAGES_TIERS: low medium high tiles
 
 jobs:
   build:

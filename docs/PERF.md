@@ -21,9 +21,9 @@
   horizon culling.
 
 ## Limits / next
-- **Close zoom is data-limited.** Blue Marble 2048² faces (~2.4–4.9 km/px) and a 2048-px cloud layer blur
-  below ~300 km. Real close-ups need tiled 500 m imagery (BMNG A1–D2 tiles), a better cloud source,
-  and a CDN.
+- **Close zoom** (down to 80 km on Medium/High) streams 500 m imagery tiles (see DATA.md). It runs at 60 fps with
+  ~150 tiles resident. Remaining limits: terrain relief comes from 2048² faces (≈5 km), and clouds
+  come from a 2048-px source, so they thin out close up.
 - **High-tier terrain is 45 MB** (RGBA16F at 2048²). Split B (R16F) from E/L/I at lower resolution.
 - **takram WebGL2 shader error** (`AtmosphereParameters` struct missing in one GLSL vertex shader).
   Harmless on Mac and NVIDIA; to report upstream.

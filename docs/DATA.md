@@ -9,9 +9,17 @@ Raw downloads are pinned by SHA-256 in `pipeline/sources.lock.json`.
 | Surface & bedrock elevation | NOAA NCEI **ETOPO 2022**, 60″ GeoTIFFs | Public domain; cite doi:10.25921/fd45-gt74 |
 | Day albedo (Jan/Apr/Jul/Oct) | NASA **Blue Marble Next Generation** base map (no shaded relief), 5400×2700 | Public domain; credit NASA Earth Observatory (R. Stöckli) |
 | Night lights | NASA **Black Marble 2016**, 3 km colour | Public domain; credit NASA Earth Observatory / GSFC |
+| Day albedo, close zoom | NASA **Blue Marble NG 500 m** (July 2004), 8 × 21600² | Public domain; credit NASA Earth Observatory (R. Stöckli) |
 | Clouds | NASA **The Blue Marble (2002)** cloud composite, 2048×1024 | Public domain; credit NASA Earth Observatory |
 | Land & lakes | **Natural Earth** 10m land, lakes | Public domain |
 | Classic 2004 | Original BlueEarth assets (`public/classic/`) | © Loic Royer; provenance of world.jpg to be confirmed |
+
+## Close-zoom tiles (`public/data/tiles/`, `pipeline/blueearth_pipeline/tiles.py`)
+- **Source:** NASA Blue Marble NG **500 m**, July 2004 (8 tiles of 21600², 350 MB). Land mask: Natural Earth 10m land minus lakes, rasterised at 500 m.
+- **Layout:** EAC quadtree tiles of 512², levels 4 (≈1.2 km/px) and 5 (≈0.6 km/px), aligned with the LOD patches. Deep-ocean tiles are skipped (the global textures cover them).
+- **Size:** 3771 tiles (902 + 2869), 52 MB.
+- **Format:** WebP RGB plus the land mask in alpha as 200 (water) … 255 (land). Browsers premultiply canvas pixels, and alpha 0 would destroy the ocean colours.
+- **Rendering:** a 128-layer texture-array cache (LRU), streamed per patch. The tile adds *detail* as a ratio to the global July albedo (`albedo_month × tile / albedo_July`), so the date's season is kept. At (near) today's sea level the tile mask defines the coastline.
 
 ## Layers per tier (EAC 6-layer arrays, 4-texel gutters on display textures)
 | File | Format | Content |
