@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu'
 import {
   abs,
+  sqrt,
   min,
   texture,
   cameraViewMatrix,
@@ -182,11 +183,18 @@ export function createGlobeMaterial(
   const ref = select(abs(d.z).greaterThan(0.99), vec3(1, 0, 0), vec3(0, 0, 1))
   const east = any(cross(ref, d)).normalize()
   const north = any(cross(d, east))
-  const delta = Math.PI / 2 / n
+  // Terrain slope from a 3-texel-wide stencil (smooth across bilinear texel seams), with the
+  // exaggerated gradient softly capped: g / √(1 + (g/gMax)²), so a low sun on ×15 relief
+  // still models ridges instead of punching black pits into 5 km valleys.
+  const delta = (1.5 * Math.PI) / 2 / n
   const lv = (dir: any) => surface(dir.normalize()).level
   const scale = any(u.exaggeration).div(2 * delta * EARTH_RADIUS)
-  const gx = lv(d.add(east.mul(delta))).sub(lv(d.sub(east.mul(delta)))).mul(scale)
-  const gy = lv(d.add(north.mul(delta))).sub(lv(d.sub(north.mul(delta)))).mul(scale)
+  const gx0 = lv(d.add(east.mul(delta))).sub(lv(d.sub(east.mul(delta)))).mul(scale)
+  const gy0 = lv(d.add(north.mul(delta))).sub(lv(d.sub(north.mul(delta)))).mul(scale)
+  const gMax = 0.6
+  const soft = float(1).div(sqrt(float(1).add(gx0.mul(gx0).add(gy0.mul(gy0)).div(gMax * gMax))))
+  const gx = gx0.mul(soft)
+  const gy = gy0.mul(soft)
   const terrainNormal = d.sub(east.mul(gx)).sub(north.mul(gy)).normalize()
   let waterNormal: any = d
   if (ocean_) {
@@ -213,8 +221,10 @@ export function createGlobeMaterial(
 
   // Water optics. Light reaching the bottom and back is absorbed per channel over 2·depth
   // (red first), then the deep-water colour takes over (Beer–Lambert with a scattering colour).
-  const absorb = vec3(0.35, 0.065, 0.03)
-  const deepWater = vec3(0.004, 0.018, 0.05)
+  // Absorption per metre (red first) and the deep-water colour, matched to the Blue Marble
+  // open ocean so new and old seas look alike.
+  const absorb = vec3(0.22, 0.045, 0.02)
+  const deepWater = vec3(0.008, 0.024, 0.055)
   const underwater = (bottom: any, depth: any) => {
     const T = any(absorb.mul(depth.mul(-2))).exp()
     return bottom.mul(T).add(deepWater.mul(float(1).sub(T)))
@@ -234,7 +244,11 @@ export function createGlobeMaterial(
   const seabed = select(s.B.lessThan(u.seaLevel), mix(vec3(0.55, 0.5, 0.4), vec3(0.3, 0.29, 0.27), saturate(s.B.negate().div(300))), exposed)
   // Today's ocean keeps the Blue Marble colour; as the sea drops it blends toward the model.
   const depthToday = max(s.B.negate(), 1)
-  const todayOcean = mix(albedo, underwater(seabed, s.depth), saturate(float(1).sub(s.depth.div(depthToday))))
+  // Today's sea keeps its Blue Marble colour; a higher sea level adds depth on top of it, which
+  // absorbs like any water column (so old and newly flooded parts match).
+  const extra = max(any(u.seaLevel), 0)
+  const deeper = underwater(albedo, extra)
+  const todayOcean = mix(deeper, underwater(seabed, s.depth), saturate(float(1).sub(s.depth.div(depthToday))))
   const wetLand = albedo.mul(0.65)
   const floodedLand = underwater(wetLand, s.depth)
   let ground: any = select(
