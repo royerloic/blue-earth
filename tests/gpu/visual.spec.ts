@@ -17,6 +17,11 @@ const SCENES: Record<string, string> = {
 
 test.describe('visual regression', () => {
   test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  // Baselines are per platform/GPU; elsewhere create them first with --update-snapshots.
+  test.skip(
+    !existsSync(`tests/gpu/visual.spec.ts-snapshots/day-africa-${process.platform}.png`) && !process.argv.includes('--update-snapshots'),
+    `no ${process.platform} baselines`,
+  )
   for (const [name, q] of Object.entries(SCENES)) {
     test(name, async ({ page }) => {
       const preset = q.includes('preset=')
