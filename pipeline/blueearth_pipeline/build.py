@@ -28,7 +28,7 @@ TIERS = {
     # High: 2048² display faces (~2.4–4.9 km/px) from the 21600-px Blue Marble; same sim grid.
     "high": {"display": 2048, "sim": 512, "albedo": "bmng_hi"},
 }
-DATA_VERSION = 1
+DATA_VERSION = 2
 
 
 def log(msg: str) -> None:
@@ -54,7 +54,8 @@ def main(tiers: list[str]) -> None:
     surface = dem.load_etopo("etopo_surface")
     bed = dem.load_etopo("etopo_bed")
     land_eq = dem.ne_raster("ne_land")
-    water_eq = dem.inland_water_mask(dem.ne_raster("ne_lakes"), land_eq)
+    lakes_eq = dem.ne_raster("ne_lakes")
+    water_eq = dem.inland_water_mask(lakes_eq, land_eq)
     night_src = image("black_marble", "RGB")
     clouds_src = image("clouds", "L")
 
@@ -70,13 +71,16 @@ def main(tiers: list[str]) -> None:
         files: dict[str, object] = {}
 
         log(f"{tier}: terrain {n}, sim {ns}")
-        disp = dem.build(n, surface, bed, water_eq, land_eq)
+        disp = dem.build(n, surface, bed, water_eq, land_eq, lakes_eq)
         # B is resampled with a real gutter; derived fields get nearest-neighbour gutters.
         terr = terrain_layers(disp, GUTTER)
-        terr[..., 0] = to_faces(surface, n, GUTTER)
+        raw = to_faces(surface, n, GUTTER)
+        carved = add_gutter(disp["B"], GUTTER)
+        # Resampled surface with real gutters, but keep the pipeline's carved straits.
+        terr[..., 0] = np.where(carved < raw - 1, carved, raw)
         encode_half(terr, out / "terrain.ktx2")
         files["terrain"] = "terrain.ktx2"
-        encode_half(terrain_layers(dem.build(ns, surface, bed, water_eq, land_eq), 0), out / "sim.ktx2")
+        encode_half(terrain_layers(dem.build(ns, surface, bed, water_eq, land_eq, lakes_eq), 0), out / "sim.ktx2")
         files["sim"] = "sim.ktx2"
 
         log(f"{tier}: albedo ({cfg['albedo']})")

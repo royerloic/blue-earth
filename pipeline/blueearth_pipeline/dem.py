@@ -100,17 +100,42 @@ def lake_levels(b: np.ndarray, water: np.ndarray, nbr: np.ndarray, f: np.ndarray
     return level
 
 
+STRAIT_SILL = -30.0  # m: depth given to sub-grid straits of marine basins (Bosphorus ≈ −35 m)
+
+
+def open_marine_basins(b: np.ndarray, sea: np.ndarray, nbr: np.ndarray, f: np.ndarray) -> np.ndarray:
+    """Natural Earth *sea* (not lake) components that the DEM cuts off from the ocean (F > 0) but
+    that border ocean cells are marine basins behind sub-grid straits (Sea of Marmara, fjords).
+    Their cells shallower than STRAIT_SILL are lowered to it, so priority-flood connects them.
+    Returns the corrected bed."""
+    cut = sea & (f > 0)
+    lab, k = _label(cut, nbr)
+    touches = np.zeros(k, bool)
+    np.logical_or.at(touches, lab[cut & (f[nbr] <= 0).any(axis=1)], True)
+    marine = cut & touches[np.maximum(lab, 0)] & (lab >= 0)
+    out = b.copy()
+    out[marine] = np.minimum(out[marine], STRAIT_SILL)
+    return out
+
+
 PROTECTED_LOWLAND_FLOOD = 2.0  # m: below-sea-level land (polders, dikes) floods at S > this
 PROTECTED_LOWLAND_MIN_BED = -15.0  # m: deepest bed that can be a protected lowland (Dutch polders ≈ −7 m)
 
 
-def build(n: int, surface: np.ndarray, bed: np.ndarray, water_eq: np.ndarray, land_eq: np.ndarray) -> dict[str, np.ndarray]:
+def build(n: int, surface: np.ndarray, bed: np.ndarray, water_eq: np.ndarray, land_eq: np.ndarray, lakes_eq: np.ndarray | None = None) -> dict[str, np.ndarray]:
     """All elevation layers on an n×n-per-face cube grid, each shaped (6, n, n)."""
     b = to_faces(surface, n)
     ice = np.maximum(b - to_faces(bed, n), 0)
     nbr = face_neighbors(n)
     bf = b.ravel().astype(np.float64)
     f = priority_flood(bf, nbr, bf < OCEAN_SEED_DEPTH)
+    if lakes_eq is not None:
+        # Natural Earth sea = not land and not a lake. The Caspian is a hole in the land layer but
+        # does not border the ocean, so it is unaffected.
+        sea = (to_faces((~land_eq & ~lakes_eq).astype(np.float32), n).ravel() > 0.5)
+        bf = open_marine_basins(bf, sea, nbr, f)
+        f = priority_flood(bf, nbr, bf < OCEAN_SEED_DEPTH)
+        b = bf.reshape(b.shape).astype(np.float32)
     # Land per Natural Earth that the DEM connects to the sea below 0 m (Netherlands, …)
     # is dike-protected today: keep it dry until the sea rises a little.
     # Only shallow lowlands qualify: at coarse resolutions the land mask also covers steep

@@ -14,7 +14,7 @@ vector in the tangent plane. That means no metric terms and no vector rotation a
 the tendency is projected onto the tangent plane every stage.
 
 ## Spatial scheme, per cell c and edge k toward neighbour o
-1. **MUSCL/minmod** on η and m along the lines cm–c–o and op–o–c (cm, op = far neighbours
+1. **MUSCL with the MC limiter** (van Leer; minmod was too dissipative for far-field waves) on η and m along the lines cm–c–o and op–o–c (cm, op = far neighbours
    along the same line, using `back` across seams). First order next to dry cells (h < 5 cm).
 2. **Hydrostatic reconstruction:** B_f = max(B_c, B_o), h* = max(0, η_rec − B_f). Liang &
    Marche bed lowering: where B_f exceeds the reconstructed water level, B_f,side = η_rec.
@@ -38,15 +38,22 @@ the tendency is projected onto the tangent plane every stage.
 
 ## Time stepping and source terms
 SSP-RK2 (Heun). After each stage: η ≥ B, m = 0 in dry cells (h < 1 mm), tangent projection,
-|u| ≤ 30 m/s. After the step: semi-implicit Manning friction (n = 0.025).
+|u| ≤ 30 m/s. After the step: semi-implicit Manning friction (n = 0.025) plus a weak linear
+momentum damping (e-folding time 1 day, `dampingTime`) so old sloshing dies out.
+
+Wave sources: click drops are a volume-neutral "Mexican hat" (crest minus a twice-as-wide
+trough of equal volume), normalised so the peak equals the requested amplitude; the ring trough
+reaches about −10 %. Earthquake sources add the Okada seafloor uplift to η (not volume-neutral, as
+in nature).
 
 ## Verified (tests/unit/swe.test.ts)
 | Test | Result |
 |---|---|
 | Lake at rest at +50 m, random bathymetry and dry islands, 100 steps | \|Δη\| < 1e-9, \|m\| < 1e-8 |
 | Volume conservation, 200 steps | < 1e-12 relative |
-| Wave speed, 4000 m flat bed, N = 48 (≈200 km cells), gauges 2000/4500 km | 203.2 m/s vs √(gh) = 198.1 (+2.5%) |
-| Isotropy: diagonal and cube-corner source | 201.9 / 203.2 m/s |
+| Wave speed, 4000 m flat bed, N = 48 (≈200 km cells), gauges 2000/4500 km | 200.2 m/s vs √(gh) = 198.1 (+1.1%) |
+| Isotropy: diagonal and cube-corner source | 200.1 / 200.2 m/s |
 | 30 m wave over random islands and beaches, 300 steps | finite, h ≥ 0, volume within 1e-6 |
 
-To do: dam-break (Ritter, Stoker), Thacker bowl, Synolakis run-up, Williamson TC2, GPU parity.
+GPU parity with this reference is tested in tests/gpu (both backends).
+To do: dam-break (Ritter, Stoker), Thacker bowl, Synolakis run-up, Williamson TC2.

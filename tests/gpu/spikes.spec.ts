@@ -127,6 +127,36 @@ test('close zoom streams 500 m tiles', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('shortcuts ignore modifier chords and form controls', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  await page.goto('/?intro=0')
+  await expect(page.locator('.be-hud')).toBeAttached({ timeout: 30_000 })
+  await page.keyboard.press('Meta+c') // copy, not "Classic"
+  await page.locator('.be-hud-select').first().focus()
+  await page.keyboard.press('c') // jumps in the select, not "Classic"
+  await page.waitForTimeout(500)
+  expect(page.url()).not.toContain('mode=classic')
+})
+
+test('re-running a preset restarts the tide gauges and the sim clock', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  test.setTimeout(120_000)
+  await page.goto('/?preset=tohoku2011&intro=0&warp=3000')
+  const simHours = async () => Number((await page.locator('.be-hud').textContent())?.match(/Sim time\s*(\d+) h/)?.[1] ?? -1)
+  await expect.poll(simHours, { timeout: 30_000 }).toBeGreaterThan(2)
+  // Pick the same event again from the menu: the clock restarts and gauges record anew.
+  await page.locator('.be-hud-select').first().selectOption('tohoku2011')
+  await expect.poll(simHours, { timeout: 10_000 }).toBeLessThan(2)
+  const ink = () =>
+    page.locator('.be-gauges canvas').evaluate((c: HTMLCanvasElement) => {
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
+      let n = 0
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++
+      return n
+    })
+  await expect.poll(ink, { timeout: 30_000 }).toBeGreaterThan(2000)
+})
+
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
   await page.route('**/data/manifest.json', (r) => r.fulfill({ status: 404, body: 'nope' }))
   await page.goto('/')

@@ -121,7 +121,9 @@ export class SWESolver {
     this.diags = [exec.createField(W, H), exec.createField(W, H)]
     this.delta = exec.createStatic(W, H, new Float32Array(W * H * 4))
     this.gaugeField = exec.createField(MAX_GAUGES, 1)
-    exec.pass<'src'>(({ src }, q) => src(q), { src: st(init) }, this.states[0])()
+    const initField = st(init)
+    exec.pass<'src'>(({ src }, q) => src(q), { src: initField }, this.states[0])()
+    ;(initField as unknown as { texture: THREE.Texture }).texture.dispose()
     this.manning.value = p.manning
     this.coriolis.value = p.coriolis ? 1 : 0
 
@@ -198,16 +200,6 @@ export class SWESolver {
   /** The field holding the current state (η, mx, my, mz). */
   get state(): Field {
     return this.states[this.cur]
-  }
-
-  /** Replaces the state with η = `eta` (per cell id) and zero momentum; η becomes η_rest. */
-  reset(eta: Float32Array | Float64Array) {
-    const init = new Float32Array(this.width * this.height * 4)
-    for (let c = 0; c < eta.length; c++) init[this.texelOf(c)] = eta[c]
-    const f = this.exec.createStatic(this.width, this.height, init)
-    this.exec.pass<'src'>(({ src }, q) => src(q), { src: f }, this.states[this.cur])()
-    ;(f as unknown as { texture: { dispose(): void } }).texture.dispose()
-    this.pending = []
   }
 
   /**
@@ -326,7 +318,9 @@ export class SWESolver {
         // Volume-neutral "Mexican hat": crest minus a trough twice as wide with the same volume
         // (∫ = 0 in the small-angle limit), so drops don't raise the level of closed seas.
         const r2 = float(1).sub(cosA).mul(2).div(sg.mul(sg))
-        const g = r2.negate().exp().sub(r2.mul(-0.25).exp().mul(0.25))
+        // Normalised so the peak equals the requested amplitude (the raw profile peaks at 0.75);
+        // the ring trough reaches about −10 % of it.
+        const g = r2.negate().exp().sub(r2.mul(-0.25).exp().mul(0.25)).div(0.75)
         const on = float(k).lessThan(this.impulseCount).and(cosA.greaterThan(0))
         eta = eta.add(select(on, d.w.mul(g), float(0)))
       }

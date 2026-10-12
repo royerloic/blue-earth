@@ -16,6 +16,7 @@ import { pickTier, rememberTier, type Tier } from '../../core/quality/tiers'
 import { OceanSim } from '../../sim/OceanSim'
 import { PRESETS } from '../../sim/presets/historical'
 import { GaugePanel, toast } from '../../ui/gauges'
+import { ignoreShortcut } from '../../ui/keys'
 
 type Scheme = 'explorer' | 'classic'
 
@@ -91,8 +92,13 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       globe.material = makeMaterial(full)
       if (lod) lod.maxLevel = maxLevel(full.n)
       old.dispose()
+      // The Low imagery (and Low sim bathymetry) is no longer referenced.
+      for (const t of [first.terrain, first.sim, first.night, first.clouds, ...Object.values(first.albedo)]) t.dispose()
       console.log(`upgraded to ${tier} imagery after ${(performance.now() - tLoad).toFixed(0)} ms`)
       tierNote.textContent = `tier ${tier}`
+    }).catch((e) => {
+      console.error(e)
+      tierNote.textContent = `tier ${first.tier} (${tier} failed to load)`
     })
   globe.frustumCulled = false
   scene.add(globe)
@@ -155,6 +161,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   })
   const oscillating = () => down !== null && !down.moved && down.p !== null && performance.now() - down.t > 500
   addEventListener('keydown', (e) => {
+    if (ignoreShortcut(e)) return
     const k = e.key.toLowerCase()
     if (k === 'k') {
       scheme = scheme === 'classic' ? 'explorer' : 'classic'
@@ -162,13 +169,15 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     } else if (k === 'g' && lastHit) {
       if (addGauge(`Gauge ${gauges.gauges.length + 1}`, lastHit) < 0) toast('At most 8 gauges')
     } else if (k === 'l') {
+      // During the intro, share where it is heading, not the flooded mid-intro state.
+      const intro = introT < INTRO
       const { lat, lon } = toLatLon(camera.position)
       const u = new URL(location.origin + location.pathname)
       u.search = new URLSearchParams({
         lat: lat.toFixed(2),
         lon: lon.toFixed(2),
-        alt: ((camera.position.length() - EARTH_RADIUS) / 1000).toFixed(0),
-        S: String(uniforms.seaLevel.value),
+        alt: (((intro ? endDist : camera.position.length()) - EARTH_RADIUS) / 1000).toFixed(0),
+        S: String(intro ? targetSea : uniforms.seaLevel.value),
         date: date.toISOString().slice(0, 16) + 'Z',
         intro: '0',
       }).toString()
@@ -186,14 +195,19 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   // --- HUD -----------------------------------------------------------------------------
   const hud = new Hud('Blue Earth')
   const gaugesRef: { current?: GaugePanel } = {}
+  /** A historical event is running: no automatic screensaver over it. */
+  let presetActive = false
   const sea = hud.slider('Sea level', -130, 80, 1, uniforms.seaLevel.value, (v) => `${v > 0 ? '+' : ''}${v} m`, (v) => (uniforms.seaLevel.value = v))
-  sea.input.addEventListener('change', () => sim.setSeaLevel(uniforms.seaLevel.value))
+  sea.input.addEventListener('change', () => setSea(uniforms.seaLevel.value))
   const setSea = (v: number) => {
     uniforms.seaLevel.value = v
     sea.set(v)
     sim.setSeaLevel(v)
     gaugesRef.current?.resetSamples()
+    presetActive = false
   }
+  // The slider clamps/rounds ?S=; keep the simulation on the same value as the renderer.
+  if (sim.seaLevel !== uniforms.seaLevel.value) sim.setSeaLevel(uniforms.seaLevel.value)
   // Sea-level presets (approximate; IPCC AR6): LGM ≈ −120 m (20 kyr ago), Greenland ≈ +7.4 m,
   // all ice ≈ +70 m (here without isostatic rebound).
   hud.buttons('Presets', [
@@ -213,9 +227,9 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   hud.slider('Wind', 0, 20, 0.5, uniforms.wind, (v) => `${v} m/s`, (v) => uniforms.setWind(v))
   hud.buttons('Map', [
     { text: 'Waves', onClick: () => (uniforms.overlay.value = 0) },
-    { text: 'Max height', title: 'Maximum wave height so far (log scale 5 cm – 20 m)', onClick: () => (uniforms.overlay.value = 1) },
+    { text: 'Max height', title: 'Maximum wave height so far (log scale 2 cm – 5 m)', onClick: () => (uniforms.overlay.value = 1) },
     { text: 'Arrival', title: 'Wave arrival time, hourly isochrones', onClick: () => (uniforms.overlay.value = 2) },
-    { text: 'Calm sea', title: 'Reset the ocean to rest', onClick: () => (sim.calm(), gauges.resetSamples()) },
+    { text: 'Calm sea', title: 'Reset the ocean to rest', onClick: () => (sim.calm(), gauges.resetSamples(), (presetActive = false)) },
   ])
   if (q.has('overlay')) uniforms.overlay.value = Number(q.get('overlay'))
   const gauges = new GaugePanel()
@@ -245,9 +259,17 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     gauges.clear()
     for (let k = 0; k < 8; k++) sim.solver.setGauge(k, -1)
     for (const [name, [la, lo]] of Object.entries(p.gauges ?? {})) addGauge(name, fromLatLon(la, lo, 1))
+    presetActive = true
     eventText.innerHTML = `<b>${p.name}</b> · ${p.magnitude}${info}<br>${p.note}<br><i>Simplified source model.</i>`
   }
-  hud.select('Tsunami', [{ value: '', text: 'Historical event…' }, ...PRESETS.map((p) => ({ value: p.id, text: `${p.name} (${p.magnitude})` }))], runPreset)
+  const tsunamiSelect = hud.select(
+    'Tsunami',
+    [{ value: '', text: 'Historical event…' }, ...PRESETS.map((p) => ({ value: p.id, text: `${p.name} (${p.magnitude})` }))],
+    (v) => {
+      runPreset(v)
+      tsunamiSelect.value = '' // so the same event can be picked again
+    },
+  )
   hud.root.appendChild(eventText)
   const simText = hud.text('Sim time')
   const quality = hud.select(
@@ -255,8 +277,8 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     [
       { value: '', text: `Auto (now: ${tier})` },
       { value: 'low', text: 'Low — 5 MB, 39 km sim cells' },
-      { value: 'medium', text: 'Medium — 19 MB, 20 km sim cells' },
-      { value: 'high', text: 'High — 61 MB, 5 km imagery, close zoom' },
+      { value: 'medium', text: 'Medium — 19 MB, 20 km sim cells, close zoom' },
+      { value: 'high', text: 'High — 61 MB, sharper globe imagery, close zoom' },
     ],
     (v) => {
       rememberTier((v || 'auto') as Tier | 'auto')
@@ -321,7 +343,14 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   if (introT === 0) {
     camera.position.setLength(startDist)
     setSea(S_START)
-    el.addEventListener('pointerdown', finishIntro, { once: true })
+    el.addEventListener(
+      'pointerdown',
+      () => {
+        finishIntro()
+        down = null // the skip click is not a wave drop
+      },
+      { once: true },
+    )
     addEventListener('keydown', finishIntro, { once: true })
   } else title.remove()
   if (q.has('preset')) runPreset(q.get('preset')!)
@@ -354,6 +383,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   if (q.get('kiosk') === '1') setKiosk(true)
   let gaugeBusy = false
   let gaugeT = -1
+  let gaugeGen = 0
 
   const tune = new AutoTune()
   if (q.has('dpr')) tune.pixelRatio = Number(q.get('dpr'))
@@ -394,7 +424,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       celestial.sun.copy(manualSun)
     }
     atmosphere.setCelestial(celestial.sun, celestial.moon, celestial.eciToEcef)
-    if (!kiosk && introT === Infinity && now - lastInput > 90_000) setKiosk(true)
+    if (!kiosk && !presetActive && gauges.gauges.length === 0 && introT === Infinity && now - lastInput > 90_000) setKiosk(true)
     if (kiosk && (kioskDrop -= dt) <= 0) {
       kioskDrop = 25
       sim.drop(sim.randomOceanPoint(), 30)
@@ -413,17 +443,25 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
       const a = (waveAmplitude / 4) * (Math.sin((2 * Math.PI * tNow) / T) - Math.sin((2 * Math.PI * tPrev) / T))
       sim.drop(down!.p!, a, 2)
     }
+    // The diagnostics clock restarts on presets, Calm sea and sea-level changes: start over.
+    if (sim.solver.clock.value < gaugeT) {
+      gaugeT = -1
+      gaugeGen++
+      gauges.resetSamples()
+    }
     if (gauges.gauges.length && !gaugeBusy && sim.solver.clock.value - gaugeT >= Math.max(30, sim.dt)) {
       gaugeBusy = true
       const t = sim.solver.clock.value
+      const gen = gaugeGen
       void sim.solver.readGauges().then((v) => {
+        gaugeBusy = false
+        if (gen !== gaugeGen) return // a reset happened while reading
         gauges.record(t, v)
         gaugeT = t
-        gaugeBusy = false
       })
     }
     gauges.update(camera, el)
-    const h = sim.solver.time / 3600
+    const h = sim.solver.clock.value / 3600 // since the last event / reset
     simText.textContent = `${Math.floor(h)} h ${String(Math.floor((h % 1) * 60)).padStart(2, '0')} min · dt ${sim.dt.toFixed(0)} s`
     uniforms.monthWeights.value.fromArray(monthWeights(date))
 

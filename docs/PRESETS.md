@@ -17,11 +17,13 @@ finite-fault inversions; replacing them with USGS finite-fault models is a plann
 | 1964 Alaska, Mw 9.2 | 2 segments | | |
 | 2010 Maule, Mw 8.8 | 1 segment, 500×150 km, 10 m | | |
 | Cascadia M9 (scenario) | 2 × 500 km, 18 m | | |
-| Asteroid impact | toy Gaussian cavity −300 m | | |
+| Asteroid impact | toy volume-neutral cavity: −300 m centre, low rim | | |
 
 **Known limitation:** far-field amplitudes are several times too small (Tōhoku at Honolulu offshore:
-7 cm modelled vs ~0.3 m observed in deep water). This is numerical dissipation of the 2nd-order
-scheme on ~20 km cells over thousands of kilometres. Arrival times and directivity are good.
+7 cm modelled vs ~0.3 m observed in deep water). Causes: numerical dissipation of the 2nd-order
+scheme on ~20 km cells over thousands of kilometres, and (since a later change) the 1-day momentum
+damping, which alone costs roughly a third of the amplitude over a 20-hour crossing. The table values
+predate the damping. Arrival times and directivity are good.
 Switching the limiter from minmod to MC halved the dissipation and made arrivals detectable.
 A higher-order scheme, a finer High tier, or nested grids would improve amplitudes.
 

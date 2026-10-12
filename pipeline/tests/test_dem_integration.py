@@ -18,8 +18,9 @@ def layers():
     from blueearth_pipeline import dem
 
     land = dem.ne_raster("ne_land")
-    water = dem.inland_water_mask(dem.ne_raster("ne_lakes"), land)
-    return dem.build(N, dem.load_etopo("etopo_surface"), dem.load_etopo("etopo_bed"), water, land)
+    lakes = dem.ne_raster("ne_lakes")
+    water = dem.inland_water_mask(lakes, land)
+    return dem.build(N, dem.load_etopo("etopo_surface"), dem.load_etopo("etopo_bed"), water, land, lakes)
 
 
 def cell(lat, lon):
@@ -40,3 +41,10 @@ def test_enclosed_basins_and_protected_lowlands(layers):
     assert abs(layers["L"][cell(42, 51)] - (-28)) < 10  # Caspian surface ≈ −28 m
     assert 0 < f[cell(52.3, 5.0)] <= 2.0  # Netherlands polders stay dry until +2 m
     assert layers["I"][cell(72, -40)] > 2000  # Greenland ice sheet
+
+
+def test_marine_basins_behind_subgrid_straits_are_ocean(layers):
+    f = layers["B"] + layers["E"]
+    assert f[cell(40.8, 28.0)] <= 0  # Sea of Marmara
+    assert f[cell(43.0, 34.0)] <= 0  # Black Sea
+    assert f[cell(42, 51)] > 0  # Caspian stays separate

@@ -29,6 +29,8 @@ export class TileCache {
   private readonly lastUsed: Float64Array
   private readonly pending = new Set<string>()
   private readonly queue: string[] = []
+  /** Frame of the latest request per queued key (stale ones are dropped before fetching). */
+  private readonly requested = new Map<string, number>()
   private readonly ready: { key: string; pixels: Uint8ClampedArray }[] = []
   private frame = 0
   private active = 0
@@ -78,6 +80,7 @@ export class TileCache {
       this.pending.add(key)
       this.queue.push(key)
     }
+    this.requested.set(key, this.frame)
     return -1
   }
 
@@ -85,7 +88,17 @@ export class TileCache {
   update(maxUploads = 3) {
     this.frame++
     // Most recently requested first: the camera moved there last.
-    while (this.active < this.concurrency && this.queue.length) void this.fetchTile(this.queue.pop()!)
+    while (this.active < this.concurrency && this.queue.length) {
+      const key = this.queue.pop()!
+      // Not asked for in the last few frames (camera moved on): forget it.
+      if ((this.requested.get(key) ?? -1) < this.frame - 3) {
+        this.pending.delete(key)
+        this.requested.delete(key)
+        continue
+      }
+      this.requested.delete(key)
+      void this.fetchTile(key)
+    }
     for (let k = 0; k < maxUploads && this.ready.length; k++) this.upload(this.ready.shift()!)
   }
 

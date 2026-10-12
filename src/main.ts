@@ -1,4 +1,5 @@
 import { createRenderer } from './core/renderer'
+import { ignoreShortcut } from './ui/keys'
 
 /** Switches mode by URL (?mode=classic), so every mode is linkable and starts clean. */
 export function gotoMode(mode: 'globe' | 'classic') {
@@ -11,7 +12,7 @@ export function gotoMode(mode: 'globe' | 'classic') {
 /** Space toggles fullscreen in every mode. */
 function installFullscreenToggle() {
   addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || e.repeat || (e.target as HTMLElement).tagName === 'TEXTAREA') return
+    if (e.code !== 'Space' || e.repeat || ignoreShortcut(e)) return
     e.preventDefault()
     if (document.fullscreenElement) void document.exitFullscreen()
     else void document.documentElement.requestFullscreen().catch(() => {})
@@ -23,13 +24,13 @@ async function main() {
   const info = await createRenderer()
   const mode = new URLSearchParams(location.search).get('mode')
   if (mode === 'classic') {
-    addEventListener('keydown', (e) => e.key.toLowerCase() === 'c' && gotoMode('globe'))
+    addEventListener('keydown', (e) => !ignoreShortcut(e) && e.key.toLowerCase() === 'c' && gotoMode('globe'))
     // Modes are separate chunks: Classic doesn't need the atmosphere or the ocean solver.
     const { startClassicMode } = await import('./app/modes/ClassicMode')
     await startClassicMode(info, () => gotoMode('globe'))
   }
   else {
-    addEventListener('keydown', (e) => e.key.toLowerCase() === 'c' && gotoMode('classic'))
+    addEventListener('keydown', (e) => !ignoreShortcut(e) && e.key.toLowerCase() === 'c' && gotoMode('classic'))
     try {
       const { startGlobeMode } = await import('./app/modes/GlobeMode')
       await startGlobeMode(info)

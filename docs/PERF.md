@@ -22,7 +22,7 @@
 
 ## Limits / next
 - **Close zoom** (down to 80 km on Medium/High) streams 500 m imagery tiles (see DATA.md). It runs at 60 fps with
-  ~150 tiles resident. Remaining limits: terrain relief comes from 2048² faces (≈5 km), and clouds
+  up to 128 tiles resident (only for visible patches). Remaining limits: terrain relief comes from 2048² faces (≈5 km), and clouds
   come from a 2048-px source, so they thin out close up.
 - **High-tier terrain is 45 MB** (RGBA16F at 2048²). Split B (R16F) from E/L/I at lower resolution.
 - **takram WebGL2 shader error** (`AtmosphereParameters` struct missing in one GLSL vertex shader).

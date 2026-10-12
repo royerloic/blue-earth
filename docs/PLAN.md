@@ -170,7 +170,7 @@ docs/           ARCHITECTURE, NUMERICS, DATA (attribution), PERF
 - **Classic toggle:** pointer = sun, which places the glint under the cursor via `L = reflect(−V, N)`. Smoothing uses `1 − exp(−dt/58 ms)`, which equals the original `(3s+m)/4` at 60 fps.
 - **Real-sun mode:** sun position from date/time, with a time-lapse slider.
 - **Picking:** ray–sphere intersection, refined against the displaced height, then lat/lon → (face, i, j) via `cubeEAC.ts`.
-- **Intro:** S starts at +500 m and eases to 0 over about 6 s, with a camera dolly and the title fading in. Then a few seeded drops.
+- **Intro:** S starts at +2000 m and eases to 0 over about 7 s, with a camera dolly and the title fading in. Then a few seeded drops.
 - **Panels:**
   - sea-level ruler strip (the original's bottom strip), presets, historical events with time warp and gauges;
   - overlays: max amplitude, isochrones, graticule;

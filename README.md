@@ -7,8 +7,8 @@ A physically based, real-time web remake of *Blue Earth*, Loic Royer's 2004 Java
 - **Real ocean physics on the GPU.** Nonlinear shallow-water equations on an equiangular cubed sphere
   (1.6 M cells) over real bathymetry (ETOPO 2022). Waves travel at √(g·depth), refract over ridges,
   reflect off coasts and flood low land. The ocean at rest stays exactly at rest (float32-exact).
-- **Sea level from Ice Age to ice-free.** −120 m exposes Sundaland and Doggerland (with the Baltic and
-  Black Sea as relict lakes); +70 m drowns the coastal plains. Connectivity comes from a flood-level map,
+- **Sea level from Ice Age to ice-free.** −120 m exposes Sundaland and Doggerland (with the Baltic and the Sea of
+  Marmara as relict lakes); +70 m drowns the coastal plains. Connectivity comes from a flood-level map,
   so the Caspian and the Dead Sea behave.
 - **Historical tsunamis.** 2004 Sumatra, 2011 Tōhoku, 1960 Valdivia and more, from simplified Okada
   fault sources (validated against Okada's DC3D). Modelled arrival times match observations;

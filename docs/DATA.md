@@ -19,7 +19,7 @@ Raw downloads are pinned by SHA-256 in `pipeline/sources.lock.json`.
 - **Layout:** EAC quadtree tiles of 512², levels 4 (≈1.2 km/px) and 5 (≈0.6 km/px), aligned with the LOD patches. Deep-ocean tiles are skipped (the global textures cover them).
 - **Size:** 3771 tiles (902 + 2869), 52 MB.
 - **Format:** WebP RGB plus the land mask in alpha as 200 (water) … 255 (land). Browsers premultiply canvas pixels, and alpha 0 would destroy the ocean colours.
-- **Rendering:** a 128-layer texture-array cache (LRU), streamed per patch. The tile adds *detail* as a ratio to the global July albedo (`albedo_month × tile / albedo_July`), so the date's season is kept. At (near) today's sea level the tile mask defines the coastline.
+- **Rendering:** a 128-layer texture-array cache (LRU), streamed per visible patch. Colour = tile + (global albedo of the date's month − global July albedo), the seasonal change applied only where tile and global map agree on land/water. At (near) today's sea level the tile mask defines the coastline.
 
 ## Layers per tier (EAC 6-layer arrays, 4-texel gutters on display textures)
 | File | Format | Content |
@@ -29,10 +29,11 @@ Raw downloads are pinned by SHA-256 in `pipeline/sources.lock.json`.
 | `albedo-MM.ktx2` | Basis ETC1S, sRGB, mipmapped | |
 | `night.ktx2`, `clouds.ktx2` | Basis ETC1S | |
 
-Low tier: 512² display faces / 256² sim, ~5 MB. Medium tier: 1024² / 512², ~19 MB.
+Low tier: 512² display faces / 256² sim, ~5 MB. Medium: 1024² / 512², ~19 MB. High: 2048² / 512², ~61 MB.
 
 ## Rules and known approximations
 - **Water at sea level S:** ocean where F ≤ S; inland water where L > B.
+- **Marine basins behind sub-grid straits** (Sea of Marmara, fjords): Natural Earth sea areas that the DEM cuts off from the ocean but that border it get a −30 m channel, so they are ocean today and become relict lakes when the sea drops below the sill.
 - **Protected lowlands:** Natural Earth land that the DEM connects to the sea below 0 m (Dutch polders etc.) gets F = +2 m. Dikes are not in the DEM.
 - **Inland water levels** come from a low (10th) percentile of shoreline elevation. Accuracy at the 512² sim grid: Caspian −28 m (true −28), Superior 196 (183), Victoria 1150 (1134), Baikal 425 (456), Titicaca 3832 (3812). Narrow rift lakes are worse: Tanganyika 870 (773).
 - Ocean fraction at S = 0: 70.6% (expected ≈ 71%).
