@@ -70,6 +70,11 @@ export class OceanSim {
     this.seaLevel = seaLevel
     this.solver = new SWESolver(this.exec, this.grid, this.B, this.initialEta(seaLevel), DEFAULT_PARAMS, this.F)
     this.solver.seaLevel.value = seaLevel
+    // The solver has its own GPU tables now; keep only what the CPU still uses (centres, areas,
+    // neighbours) and free the per-edge float64 geometry (~200 MB at N = 512).
+    this.grid.normal = new Float64Array(0)
+    this.grid.lenOverArea = new Float64Array(0)
+    this.grid.edgeLength = new Float64Array(0)
     this.solver.dt.value = this.dt
     const N = this.N
     const M = N + 2

@@ -295,12 +295,15 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   let reliefSetting = Number(q.get('relief') ?? uniforms.exaggeration.value)
   hud.slider('Relief', 1, 50, 1, reliefSetting, (v) => `×${v}`, (v) => (reliefSetting = v))
   const dayOfYear = (d: Date) => Math.floor((d.getTime() - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000)
+  // 0-based day of the year, clamped to the year's length (Dec 31 is day 365 in leap years).
+  const yearDays = (y: number) => (Date.UTC(y + 1, 0, 1) - Date.UTC(y, 0, 1)) / 86_400_000
+  const clampDay = (doy: number) => Math.min(doy, yearDays(date.getUTCFullYear()) - 1)
   const setDay = (doy: number) => {
-    const t = new Date(Date.UTC(date.getUTCFullYear(), 0, 1) + doy * 86_400_000)
+    const t = new Date(Date.UTC(date.getUTCFullYear(), 0, 1) + clampDay(doy) * 86_400_000)
     t.setUTCHours(date.getUTCHours(), date.getUTCMinutes())
     date = t
   }
-  const daySlider = hud.slider('Day', 0, 364, 1, dayOfYear(date), (v) => new Date(Date.UTC(date.getUTCFullYear(), 0, 1 + v)).toLocaleDateString('en', { month: 'short', day: 'numeric', year: date.getUTCFullYear() === new Date().getUTCFullYear() ? undefined : 'numeric', timeZone: 'UTC' }), setDay)
+  const daySlider = hud.slider('Day', 0, 365, 1, dayOfYear(date), (v) => new Date(Date.UTC(date.getUTCFullYear(), 0, 1 + clampDay(v))).toLocaleDateString('en', { month: 'short', day: 'numeric', year: date.getUTCFullYear() === new Date().getUTCFullYear() ? undefined : 'numeric', timeZone: 'UTC' }), setDay)
   const hourSlider = hud.slider('Time (UTC)', 0, 23.99, 0.05, date.getUTCHours() + date.getUTCMinutes() / 60, (v) => `${String(Math.floor(v)).padStart(2, '0')}:${String(Math.floor((v % 1) * 60)).padStart(2, '0')}`, (v) => {
     date = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) + v * 3_600_000)
   })

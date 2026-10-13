@@ -117,6 +117,14 @@ export class SWESolver {
     }
     const st = (d: Float32Array) => exec.createStatic(W, H, d)
     this.statics = { nb: st(nb), cell: st(cell), g0: st(gk[0]), g1: st(gk[1]), g2: st(gk[2]), g3: st(gk[3]), bed: st(bedT) }
+    // The geometry tables never change: drop their CPU copies once uploaded (~150 MB at N = 512).
+    for (const k of ['nb', 'cell', 'g0', 'g1', 'g2', 'g3'] as const) {
+      const tex = (this.statics[k] as unknown as { texture: THREE.DataTexture }).texture
+      tex.onUpdate = () => {
+        ;(tex.image as { data: unknown }).data = null
+        tex.onUpdate = null
+      }
+    }
     this.states = [exec.createField(W, H), exec.createField(W, H), exec.createField(W, H)]
     this.diags = [exec.createField(W, H), exec.createField(W, H)]
     this.delta = exec.createStatic(W, H, new Float32Array(W * H * 4))

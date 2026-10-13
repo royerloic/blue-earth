@@ -31,6 +31,8 @@ export class TileCache {
   private readonly queue: string[] = []
   /** Frame of the latest request per queued key (stale ones are dropped before fetching). */
   private readonly requested = new Map<string, number>()
+  /** Failed tiles: no retry before this time (ms), doubling back-off. */
+  private readonly failedUntil = new Map<string, { until: number; wait: number }>()
   private readonly ready: { key: string; pixels: Uint8ClampedArray }[] = []
   private frame = 0
   private active = 0
@@ -76,6 +78,8 @@ export class TileCache {
       this.lastUsed[l] = this.frame
       return l
     }
+    const fail = this.failedUntil.get(key)
+    if (fail && performance.now() < fail.until) return -1
     if (!this.pending.has(key)) {
       this.pending.add(key)
       this.queue.push(key)
@@ -113,8 +117,12 @@ export class TileCache {
       ctx.drawImage(bmp, 0, 0)
       bmp.close()
       this.ready.push({ key, pixels: ctx.getImageData(0, 0, this.size, this.size).data })
+      this.failedUntil.delete(key)
     } catch {
-      this.pending.delete(key) // retried on the next request
+      // Retry later with exponential back-off (offline, flaky network), not every frame.
+      const wait = Math.min(60_000, (this.failedUntil.get(key)?.wait ?? 1000) * 2)
+      this.failedUntil.set(key, { until: performance.now() + wait, wait })
+      this.pending.delete(key)
     } finally {
       this.active--
     }

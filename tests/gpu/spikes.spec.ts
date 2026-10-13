@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
+import { devices, expect, test, type Page } from '@playwright/test'
 
 /** Opens a spike page and returns the payload it logs as `SPIKE {json}`. */
 async function runSpike(page: Page, query: string): Promise<{ name: string; backend: string; data: any }> {
@@ -155,6 +155,48 @@ test('re-running a preset restarts the tide gauges and the sim clock', async ({ 
       return n
     })
   await expect.poll(ink, { timeout: 30_000 }).toBeGreaterThan(2000)
+})
+
+test('stress: big drops and earthquakes at three sea levels stay finite, wet and conservative', async ({ page }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  test.setTimeout(300_000)
+  const { data } = await runSpike(page, 'spike=stress&steps=1500')
+  for (const r of data) {
+    expect(r.nan, `S=${r.S}`).toBe(0)
+    expect(r.negDepthCells, `S=${r.S}`).toBe(0)
+    expect(r.maxSpeed, `S=${r.S}`).toBeLessThanOrEqual(30.01)
+    expect(Math.abs(r.volumeDriftRel), `S=${r.S}`).toBeLessThan(1e-5)
+  }
+})
+
+test('phone: panel starts collapsed, a tap drops a wave, the title expands the panel', async ({ browser }) => {
+  test.skip(!existsSync('public/data/manifest.json'), 'needs globe data (pipeline build)')
+  const ctx = await browser.newContext({ ...devices['iPhone 15'], baseURL: test.info().project.use.baseURL })
+  const page = await ctx.newPage()
+  let drops = 0
+  page.on('console', (m) => m.text().startsWith('drop') && drops++)
+  await page.goto('/?intro=0&lat=20&lon=-30&alt=20000')
+  await expect(page.locator('.be-hud')).toHaveClass(/collapsed/, { timeout: 30_000 })
+  await page.waitForTimeout(2000)
+  await page.touchscreen.tap(196, 220)
+  await expect.poll(() => drops).toBe(1)
+  await page.locator('.be-hud-title').tap()
+  await expect(page.locator('.be-hud')).not.toHaveClass(/collapsed/)
+  await ctx.close()
+})
+
+test('tile outage: failed tiles back off instead of being re-requested every frame', async ({ page }) => {
+  test.skip(!existsSync('public/data/tiles/index.json'), 'needs tiles')
+  let requests = 0
+  await page.route('**/tiles/07/**', (r) => {
+    requests++
+    return r.abort()
+  })
+  await page.goto('/?intro=0&tier=high&progressive=0&lat=46.2&lon=8.5&alt=150')
+  await expect(page.locator('.be-hud')).toBeAttached({ timeout: 30_000 })
+  await page.waitForTimeout(8000)
+  expect(requests).toBeGreaterThan(0)
+  expect(requests).toBeLessThan(150) // ~20 tiles × a few back-off retries, not per frame
 })
 
 test('globe page explains missing data instead of failing silently', async ({ page }) => {
