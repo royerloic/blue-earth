@@ -18,6 +18,8 @@ export default defineConfig({
   testDir: 'tests/gpu',
   timeout: ci ? 180_000 : 90_000,
   workers: 1,
+  // The app needs a few seconds to load data and compile shaders, more on slow/shared GPUs.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: preview ? 'http://localhost:5175' : 'http://localhost:5174',
     channel: ci || linuxGpu ? undefined : 'chrome',
