@@ -93,15 +93,16 @@ test('a preset places tide gauges that record the wave', async ({ page }) => {
   await page.goto('/?preset=tohoku2011&intro=0&warp=3000')
   await expect(page.locator('.be-gauges')).toBeVisible()
   await expect(page.locator('.be-gauge-marker')).toHaveCount(4)
-  await page.waitForTimeout(6000)
   // The chart has drawn non-trivial content (Kushiro sees the wave within the first hour).
-  const ink = await page.locator('.be-gauges canvas').evaluate((c: HTMLCanvasElement) => {
+  const ink = () =>
+    page.locator('.be-gauges canvas').evaluate((c: HTMLCanvasElement) => {
     const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data
     let n = 0
     for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++
     return n
   })
-  expect(ink).toBeGreaterThan(2000)
+  // Poll: slower machines take longer to load and record (Kushiro sees the wave within 1 h).
+  await expect.poll(ink, { timeout: 30_000 }).toBeGreaterThan(2000)
 })
 
 test('progressive start: Low imagery first, then upgraded to Medium', async ({ page }) => {
