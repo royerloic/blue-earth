@@ -38,6 +38,13 @@ export interface GlobeData {
 export const NO_LAKE = -10000
 
 const manifests = new Map<string, Promise<DataManifest>>()
+// One KTX2 loader (and its transcoder workers) per renderer.
+const loaders = new WeakMap<THREE.WebGPURenderer, Ktx2Arrays>()
+function loaderFor(renderer: THREE.WebGPURenderer): Ktx2Arrays {
+  let l = loaders.get(renderer)
+  if (!l) loaders.set(renderer, (l = new Ktx2Arrays(renderer, `${import.meta.env.BASE_URL}basis/`)))
+  return l
+}
 const defaultBase = () => `${import.meta.env.VITE_ASSET_BASE ?? import.meta.env.BASE_URL}data/`
 
 function manifestAt(base: string): Promise<DataManifest> {
@@ -54,7 +61,7 @@ function tierOf(manifest: DataManifest, tier: string) {
 /** Only a tier's simulation bathymetry (small), e.g. to start the sim at full resolution early. */
 export async function loadSimData(renderer: THREE.WebGPURenderer, tier: string, base = defaultBase()) {
   const t = tierOf(await manifestAt(base), tier)
-  const sim = await new Ktx2Arrays(renderer, `${import.meta.env.BASE_URL}basis/`).load(`${base}${tier}/${t.files.sim}`)
+  const sim = await loaderFor(renderer).load(`${base}${tier}/${t.files.sim}`)
   return { sim, nSim: t.sim }
 }
 
@@ -70,7 +77,7 @@ export async function loadGlobeData(
 ): Promise<GlobeData> {
   const manifest = await manifestAt(base)
   const t = tierOf(manifest, tier)
-  const loader = new Ktx2Arrays(renderer, `${import.meta.env.BASE_URL}basis/`)
+  const loader = loaderFor(renderer)
   const url = (f: string) => `${base}${tier}/${f}`
   const months = Object.keys(t.files.albedo)
   const [terrain, sim, night, clouds, ...albedo] = await Promise.all([
