@@ -33,8 +33,10 @@ check('cursor lat/lon readout', /\d+\.\d+°[NS]\s+\d+\.\d+°[EW]/.test(await hud
 await p.keyboard.press('g'); await p.waitForTimeout(300)
 check('G adds a tide gauge', (await p.locator('.be-gauge-marker').count()) === 1)
 // Keys.
-await p.keyboard.press('h'); check('H hides the panel', !(await p.locator('.be-hud').isVisible()))
-await p.keyboard.press('h'); check('H shows it again', await p.locator('.be-hud').isVisible())
+await p.keyboard.press('h'); check('H collapses the panel', await p.locator('.be-hud').evaluate((e) => e.classList.contains('collapsed')))
+await p.keyboard.press('h'); check('H expands it again', !(await p.locator('.be-hud').evaluate((e) => e.classList.contains('collapsed'))))
+await p.locator('.be-hud-toggle').click(); check('Hide button collapses', (await p.locator('.be-hud-toggle').textContent()).includes('Show'))
+await p.locator('.be-hud-toggle').click(); check('Show button expands', (await p.locator('.be-hud-toggle').textContent()).includes('Hide'))
 await p.keyboard.press('k'); check('K switches to Classic controls', (await hud()).includes('pointer = sun'))
 await p.mouse.move(600, 300); await p.waitForTimeout(200)
 check('Classic controls: pointer steers the sun', (await hud()).includes('manual'))
@@ -56,8 +58,9 @@ await p.getByText('All ice +70').click(); check('All-ice preset sets +70 m', (aw
 await setRange(0, 0); check('sea-level slider', (await hud()).includes('0 m'))
 await setRange(1, 0); check('sim speed 0 = paused', (await hud()).includes('paused'))
 const simTime = () => p.locator('.be-hud-row', { hasText: 'Sim time' }).locator('.be-hud-text').textContent()
+await p.waitForTimeout(400) // let the display catch up with the sea-level reset
 const t1 = await simTime(); await p.waitForTimeout(1500)
-check('paused sim does not advance', (await simTime()) === t1, t1)
+const t2 = await simTime(); check('paused sim does not advance', t2 === t1, `${t1} → ${t2}`)
 await setRange(1, 3000)
 await setRange(3, 0); check('Waves slider: realistic', (await hud()).includes('realistic'))
 await setRange(3, 1)

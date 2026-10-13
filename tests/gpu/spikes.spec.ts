@@ -181,7 +181,7 @@ test('phone: panel starts collapsed, a tap drops a wave, the title expands the p
   await page.waitForTimeout(2000)
   await page.touchscreen.tap(196, 220)
   await expect.poll(() => drops).toBe(1)
-  await page.locator('.be-hud-title').tap()
+  await page.locator('.be-hud-toggle').tap()
   await expect(page.locator('.be-hud')).not.toHaveClass(/collapsed/)
   await ctx.close()
 })

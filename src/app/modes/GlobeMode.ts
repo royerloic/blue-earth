@@ -185,7 +185,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
     } else if (k === 'i') {
       showAbout(data.credits)
     } else if (k === 'h') {
-      hud.root.style.display = hud.root.style.display === 'none' ? '' : 'none'
+      hud.togglePanel()
     } else if (k === 'r') {
       sunMode = 'real'
       sunText.textContent = 'real (date & time)'
@@ -315,7 +315,7 @@ export async function startGlobeMode({ renderer, backend }: RendererInfo) {
   const posText = hud.text('Cursor')
   const schemeText = hud.text('Controls')
   if (q.get('hud') === '0') hud.root.style.display = 'none'
-  const noteEl = hud.note(`Click: drop a wave (hold: oscillate) · G: tide gauge at cursor · L: copy link · I: about · Space: fullscreen · H: hide panel · K: switch controls · R: real sun · C: Classic 2004 · <span class="tier">tier ${first.tier}${progressive ? ` → ${tier}…` : ''}</span> · ${backend}`)
+  const noteEl = hud.note(`Click: drop a wave (hold: oscillate) · G: tide gauge at cursor · L: copy link · I: about · Space: fullscreen · H: hide/show controls · K: switch controls · R: real sun · C: Classic 2004 · <span class="tier">tier ${first.tier}${progressive ? ` → ${tier}…` : ''}</span> · ${backend}`)
   const tierNote = noteEl.querySelector('.tier') as HTMLElement
   applyScheme()
 

@@ -1,4 +1,6 @@
 /** Small, dependency-free control panel. Each control returns its element for later updates. */
+const COLLAPSE_KEY = 'blue-earth.panel-collapsed'
+
 export class Hud {
   readonly root: HTMLDivElement
   private readonly body: HTMLDivElement
@@ -7,21 +9,37 @@ export class Hud {
     injectStyle()
     this.root = document.createElement('div')
     this.root.className = 'be-hud'
-    // The title toggles the panel (the only way to hide it on touch screens); small screens
-    // start collapsed so the globe stays usable.
-    const head = document.createElement('button')
-    head.className = 'be-hud-title'
-    head.innerHTML = `${title} <span class="be-hud-chevron">▾</span>`
-    head.title = 'Show / hide controls'
-    head.addEventListener('click', () => {
-      this.collapsed = !this.collapsed
-      head.blur()
-    })
+    // Header: title (click toggles too) and an explicit Hide/Show button. Collapsed, the panel is
+    // a small bar, so it can always be brought back (also on touch screens). The state is
+    // remembered; small screens start collapsed.
+    const head = document.createElement('div')
+    head.className = 'be-hud-head'
+    const titleBtn = document.createElement('button')
+    titleBtn.className = 'be-hud-title'
+    titleBtn.textContent = title
+    titleBtn.title = 'Show / hide controls (H)'
+    this.toggleBtn = document.createElement('button')
+    this.toggleBtn.className = 'be-hud-toggle'
+    for (const b of [titleBtn, this.toggleBtn])
+      b.addEventListener('click', () => {
+        this.togglePanel()
+        b.blur()
+      })
+    head.append(titleBtn, this.toggleBtn)
     this.root.appendChild(head)
     this.body = document.createElement('div')
     this.root.appendChild(this.body)
     document.body.appendChild(this.root)
-    this.collapsed = matchMedia('(max-width: 700px), (max-height: 520px)').matches
+    const saved = localStorage.getItem(COLLAPSE_KEY)
+    this.collapsed = saved !== null ? saved === '1' : matchMedia('(max-width: 700px), (max-height: 520px)').matches
+  }
+
+  private readonly toggleBtn: HTMLButtonElement
+
+  /** Collapses or expands the panel (H key, header buttons); remembered across visits. */
+  togglePanel() {
+    this.collapsed = !this.collapsed
+    localStorage.setItem(COLLAPSE_KEY, this.collapsed ? '1' : '0')
   }
 
   get collapsed(): boolean {
@@ -30,6 +48,8 @@ export class Hud {
 
   set collapsed(v: boolean) {
     this.root.classList.toggle('collapsed', v)
+    this.toggleBtn.textContent = v ? 'Show controls ▸  H' : 'Hide ▾  H'
+    this.toggleBtn.title = v ? 'Show the controls (H)' : 'Hide the controls (H)'
   }
 
   slider(label: string, min: number, max: number, step: number, value: number, fmt: (v: number) => string, onInput: (v: number) => void) {
@@ -137,14 +157,16 @@ function injectStyle() {
     background: rgba(6, 10, 20, 0.62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(140, 170, 255, 0.15); border-radius: 10px; color: #cfdcff;
     font: 12px/1.5 system-ui, -apple-system, sans-serif; user-select: none; }
-  .be-hud-title { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0; cursor: pointer;
-    font: italic 600 12px/1.5 system-ui, -apple-system, sans-serif; color: #6f8dff; letter-spacing: .02em; margin-bottom: 4px; }
-  .be-hud-chevron { display: inline-block; font-style: normal; opacity: .7; transition: transform .2s; }
-  .be-hud.collapsed { min-width: 0; }
-  .be-hud.collapsed > div { display: none; }
-  .be-hud.collapsed .be-hud-title { margin-bottom: 0; }
-  .be-hud.collapsed .be-hud-chevron { transform: rotate(-90deg); }
-  @media (max-width: 700px) { .be-hud { left: 8px; right: 8px; bottom: 8px; min-width: 0; max-width: none; } }
+  .be-hud-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .be-hud-title { background: none; border: 0; padding: 0; cursor: pointer;
+    font: italic 600 12px/1.5 system-ui, -apple-system, sans-serif; color: #6f8dff; letter-spacing: .02em; }
+  .be-hud-toggle { font: 11px system-ui, sans-serif; color: #cfdcff; background: rgba(111, 141, 255, 0.14);
+    border: 1px solid rgba(140, 170, 255, 0.3); border-radius: 5px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+  .be-hud-toggle:hover { background: rgba(111, 141, 255, 0.32); }
+  .be-hud.collapsed { min-width: 0; padding: 6px 10px; }
+  .be-hud.collapsed > div:not(.be-hud-head) { display: none; }
+  .be-hud.collapsed .be-hud-head { margin-bottom: 0; }
+  @media (max-width: 700px) { .be-hud:not(.collapsed) { left: 8px; right: 8px; bottom: 8px; min-width: 0; max-width: none; } }
   .be-hud-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
   .be-hud-label { width: 86px; opacity: .75; }
   .be-hud-row input[type=range] { flex: 1; accent-color: #6f8dff; }
