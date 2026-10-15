@@ -1,5 +1,6 @@
 /** Small, dependency-free control panel. Each control returns its element for later updates. */
-const COLLAPSE_KEY = 'blue-earth.panel-collapsed'
+// v2: choices saved before 'collapsed by default' are ignored.
+const COLLAPSE_KEY = 'blue-earth.panel-collapsed.v2'
 
 export class Hud {
   readonly root: HTMLDivElement
