@@ -11,7 +11,7 @@ export class Hud {
     this.root.className = 'be-hud'
     // Header: title (click toggles too) and an explicit Hide/Show button. Collapsed, the panel is
     // a small bar, so it can always be brought back (also on touch screens). The state is
-    // remembered; small screens start collapsed.
+    // remembered; it starts collapsed.
     const head = document.createElement('div')
     head.className = 'be-hud-head'
     const titleBtn = document.createElement('button')
@@ -31,7 +31,8 @@ export class Hud {
     this.root.appendChild(this.body)
     document.body.appendChild(this.root)
     const saved = localStorage.getItem(COLLAPSE_KEY)
-    this.collapsed = saved !== null ? saved === '1' : matchMedia('(max-width: 700px), (max-height: 520px)').matches
+    // Collapsed by default (a clean first view of the globe); the user's choice is remembered.
+    this.collapsed = saved !== '0'
   }
 
   private readonly toggleBtn: HTMLButtonElement

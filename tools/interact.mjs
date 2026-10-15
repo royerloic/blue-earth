@@ -18,6 +18,8 @@ try {
 await p.goto(base + '?intro=0&lat=5&lon=-160&alt=9000&date=2026-07-09T23:00:00Z&warp=1200')
 await p.locator('.be-hud').waitFor({ state: 'attached', timeout: 30000 })
 await p.waitForTimeout(3000)
+check('panel starts collapsed', await p.locator('.be-hud').evaluate((e) => e.classList.contains('collapsed')))
+await p.keyboard.press('h') // open it for the control checks
 // Clicks: drop and hold-to-oscillate.
 await p.mouse.click(640, 400); await p.waitForTimeout(500)
 check('click drops a wave', drops.length === 1, `${drops.length} drop(s)`)

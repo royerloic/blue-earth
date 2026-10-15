@@ -133,6 +133,7 @@ test('shortcuts ignore modifier chords and form controls', async ({ page }) => {
   await page.goto('/?intro=0')
   await expect(page.locator('.be-hud')).toBeAttached({ timeout: 30_000 })
   await page.keyboard.press('Meta+c') // copy, not "Classic"
+  await page.locator('.be-hud-toggle').click() // the panel starts collapsed
   await page.locator('.be-hud-select').first().focus()
   await page.keyboard.press('c') // jumps in the select, not "Classic"
   await page.waitForTimeout(500)
@@ -146,6 +147,7 @@ test('re-running a preset restarts the tide gauges and the sim clock', async ({ 
   const simHours = async () => Number((await page.locator('.be-hud').textContent())?.match(/Sim time\s*(\d+) h/)?.[1] ?? -1)
   await expect.poll(simHours, { timeout: 30_000 }).toBeGreaterThan(2)
   // Pick the same event again from the menu: the clock restarts and gauges record anew.
+  await page.locator('.be-hud-toggle').click() // the panel starts collapsed
   await page.locator('.be-hud-select').first().selectOption('tohoku2011')
   await expect.poll(simHours, { timeout: 10_000 }).toBeLessThan(2)
   const ink = () =>
