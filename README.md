@@ -60,12 +60,13 @@ GPU=linux npx playwright test # on a Linux box with a real GPU (Vulkan)
 
 ### QA scripts (against any URL, default the live site)
 ```sh
-node tools/interact.mjs [url]   # every control: keys, sliders, buttons, share-link round trip, Classic (33 checks)
+node tools/interact.mjs [url]   # every control: keys, sliders, buttons, share-link round trip, Classic (37 checks)
 node tools/sweep.mjs [url]      # 20 configurations (tiers, backends, presets, overlays…): errors + screenshots
 node tools/browsers.mjs [url]   # Firefox + WebKit (WebGL2 fallback)
 node tools/mobile.mjs [url]     # iPhone / Pixel / small laptop: tier, panel size, tap-to-drop
 node tools/memory.mjs [url]     # 3 min kiosk run: JS heap and DOM growth
 node tools/offline.mjs          # tile outage + recovery, both backends (local dev server)
+node tools/safari.mjs [url]     # real Safari via safaridriver (one-time setup in the file header)
 ```
 
 ## Docs
